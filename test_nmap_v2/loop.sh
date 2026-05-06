@@ -102,7 +102,7 @@ while true; do
         SPOOFED_JSON=$(echo "$RESPONSE" | jq -c '.identity.spoofed')
         curl -s -X POST "http://$API_SERVER/api/v1/update_status" \
              -H "Content-Type: application/json" \
-             -d "{\"log_id\": $LOG_ID, \"status\": \"ALLOCATED\", \"device_id\": \"$DEV_ID\", \"spoofed_identity\": $SPOOFED_JSON}" > /dev/null
+             -d "{\"log_id\": $LOG_ID, \"status\": \"ALLOCATED\", \"device_id\": \"$DEV_ID\", \"spoofed_identity\": $SPOOFED_JSON}" >> /tmp/main_debug_$DEV_ID.log
 
         # Socket Purge
         adb -s "$DEV_ID" forward --remove tcp:$FRIDA_PORT >/dev/null 2>&1 || true
@@ -132,7 +132,7 @@ while true; do
         NMAP_ORIG_TOKEN=$(echo "$RESPONSE" | jq -r '.identity.original.token') \
         NMAP_FRIDA_PORT="$FRIDA_PORT" \
         NMAP_NO_IP="$SKIP_IP" \
-        setsid bash lib/main.sh "$DEV_ID" > /dev/null 2>&1 &
+        setsid bash lib/main.sh "$DEV_ID" >> /tmp/main_debug_$DEV_ID.log 2>&1 &
         
         log_info "[$DEV_ID] Engine forked successfully."
         sleep 2

@@ -19,11 +19,11 @@ for serial in $devices; do
     # 2. Force system UI rotation to Portrait (0 degrees)
     adb -s "$serial" shell settings put system user_rotation 0
     
-    # 3. Force Window Manager to lock user-rotation to 0 (Portrait)
-    adb -s "$serial" shell cmd window user-rotation lock 0 >/dev/null 2>&1 || true
+    # 3. Ignore App's requested orientation (Forces apps like Naver Map to stay Portrait)
+    adb -s "$serial" shell wm set-ignore-orientation-request true >/dev/null 2>&1 || true
     
-    # 4. Ignore App's requested orientation (Forces apps like Naver Map to stay Portrait)
-    adb -s "$serial" shell cmd window set-ignore-orientation-request true >/dev/null 2>&1 || true
+    # 4. Force Window Manager to strictly follow user-rotation
+    adb -s "$serial" shell wm fixed-to-user-rotation enabled >/dev/null 2>&1 || true
 
 done
 

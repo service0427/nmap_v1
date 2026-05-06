@@ -3,7 +3,7 @@
   "base_mitm_port": 30000,
   "devices": [
     {
-      "id": "R3CN10BZ7PD",
+      "id": "R3CN20KZTKW",
       "alias": "G981N",
       "baseline": {
         "adid": "62a0be44-687e-42e4-9670-873b939f9fdd",
@@ -14,7 +14,7 @@
       }
     },
     {
-      "id": "R3CN206ZDHJ",
+      "id": "R3CN30N5YKB",
       "alias": "G981N",
       "baseline": {
         "adid": "b7420432-e7ac-4c17-8236-f10ef9ade8a9",
@@ -25,7 +25,7 @@
       }
     },
     {
-      "id": "R3CN20NKRAV",
+      "id": "R3CN30X2E2B",
       "alias": "G981N",
       "baseline": {
         "adid": "b73714a7-0d23-46f7-bf95-d936097b65c3",
@@ -36,7 +36,7 @@
       }
     },
     {
-      "id": "R3CN20NNQNH",
+      "id": "R3CN4046JBB",
       "alias": "G981N",
       "baseline": {
         "adid": "9d22fc7d-68f5-4e8c-8cd0-8ff4f270406b",
@@ -47,7 +47,7 @@
       }
     },
     {
-      "id": "R3CN308REMY",
+      "id": "R3CN3106Z5M",
       "alias": "G981N",
       "baseline": {
         "adid": "f2b638f6-12c5-473b-a820-ce18405752a9",

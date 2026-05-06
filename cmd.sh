@@ -10,7 +10,10 @@ case "$1" in
     --mute)
         bash "$CMD_DIR/mute.sh"
         ;;
-    --portrait)
+    --dark)
+        bash "$CMD_DIR/dark.sh"
+        ;;
+    --portrait|--portait)
         bash "$CMD_DIR/portrait.sh"
         ;;
     --data)

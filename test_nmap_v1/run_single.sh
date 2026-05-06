@@ -35,6 +35,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# 0. Environment Setup
+export PATH=$PATH:$HOME/.local/bin
+if ! command -v mitmdump &> /dev/null; then
+    echo -e "\e[1;31m[-] Error: mitmdump not found in PATH ($PATH)\e[0m"
+    exit 1
+fi
+if ! command -v frida &> /dev/null; then
+    echo -e "\e[1;31m[-] Error: frida not found in PATH\e[0m"
+    exit 1
+fi
+
 CYAN="\e[1;36m"
 GREEN="\e[1;32m"
 YELLOW="\e[1;33m"

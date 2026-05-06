@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
 
 # Base installation path
-INSTALL_DIR="/home/tech/nmap/install"
-CERT_PATH="$INSTALL_DIR/mitmproxy-ca-cert.crt"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INSTALL_DIR="$SCRIPT_DIR/install"
+CERT_PATH="/home/tech/.mitmproxy/mitmproxy-ca-cert.pem"
 
 # Define packages and their files
 APPS=(
-    "com.nhn.android.nmap:1:$INSTALL_DIR/map_6.5.2.1/base.apk $INSTALL_DIR/map_6.5.2.1/split_config.arm64_v8a.apk $INSTALL_DIR/map_6.5.2.1/split_config.xxhdpi.apk"
+    "com.nhn.android.nmap:1:$INSTALL_DIR/com.nhn.android.nmap_6.5.2.1/base.apk $INSTALL_DIR/com.nhn.android.nmap_6.5.2.1/split_config.arm64_v8a.apk $INSTALL_DIR/com.nhn.android.nmap_6.5.2.1/split_config.xxhdpi.apk"
     "com.rosteam.gpsemulator:1:$INSTALL_DIR/gpsemulator/base.apk $INSTALL_DIR/gpsemulator/split_config.arm64_v8a.apk $INSTALL_DIR/gpsemulator/split_config.ko.apk $INSTALL_DIR/gpsemulator/split_config.xxhdpi.apk"
     "com.android.adbkeyboard:0:$INSTALL_DIR/ADBKeyboard.apk"
 )
 
 # Extract Certificate Hash
-CERT_HASH=$(openssl x509 -inform PEM -subject_hash_old -in "$CERT_PATH" 2>/dev/null | head -1)
+CERT_HASH=""
+if [ -f "$CERT_PATH" ]; then
+    CERT_HASH=$(openssl x509 -inform PEM -subject_hash_old -in "$CERT_PATH" 2>/dev/null | head -1)
+fi
 
 # Get all connected devices
 DEVICES=$(adb devices | grep -w "device" | awk '{print $1}')
@@ -26,6 +30,18 @@ for serial in $DEVICES; do
     echo "--------------------------------------------------"
     echo "Checking device: $serial"
     
+    # 0. Root Check
+    HAS_SU=$(adb -s "$serial" shell "which su" 2>/dev/null | tr -d '\r')
+    if [ -z "$HAS_SU" ]; then
+        HAS_SU=$(adb -s "$serial" shell "ls /system/bin/su /system/xbin/su /sbin/su 2>/dev/null" | head -1 | tr -d '\r')
+    fi
+
+    if [ -z "$HAS_SU" ]; then
+        echo "[$serial] [!] 'su' command not found. Root actions will fail."
+    else
+        echo "[$serial] [✓] Found 'su' at: $HAS_SU"
+    fi
+
     # 1. App Installation with Pass Logic
     INSTALLED_PACKAGES=$(adb -s "$serial" shell pm list packages | cut -d':' -f2)
     for app in "${APPS[@]}"; do
@@ -45,61 +61,72 @@ for serial in $DEVICES; do
 
     # 2. Magisk Modules Pass Logic
     echo "[$serial] Checking Magisk modules..."
-    NEED_PUSH=false
-    for f in "$INSTALL_DIR/Magisk_Module"/*.zip; do
-        fname=$(basename "$f")
-        if ! adb -s "$serial" shell "[ -f /sdcard/Download/$fname ]" >/dev/null 2>&1; then
-            NEED_PUSH=true; break
+    if [ -d "$INSTALL_DIR/Magisk_Module" ]; then
+        NEED_PUSH=false
+        for f in "$INSTALL_DIR/Magisk_Module"/*.zip; do
+            [ -e "$f" ] || continue
+            fname=$(basename "$f")
+            if ! adb -s "$serial" shell "[ -f /sdcard/Download/$fname ]" >/dev/null 2>&1; then
+                NEED_PUSH=true; break
+            fi
+        done
+        if [ "$NEED_PUSH" = true ]; then
+            echo "[$serial] Pushing Magisk modules to /sdcard/Download..."
+            adb -s "$serial" push "$INSTALL_DIR/Magisk_Module/." /sdcard/Download/
+        else
+            echo "[$serial] Magisk modules already exist or no modules found. Skipping."
         fi
-    done
-    if [ "$NEED_PUSH" = true ]; then
-        echo "[$serial] Pushing Magisk modules to /sdcard/Download..."
-        adb -s "$serial" push "$INSTALL_DIR/Magisk_Module/." /sdcard/Download/
-    else
-        echo "[$serial] Magisk modules already exist. Skipping."
     fi
 
-    # 3. ROOT Certificate Injection (Critical for SSL)
-    if [ -n "$CERT_HASH" ]; then
-        echo "[$serial] Checking system certificate ($CERT_HASH.0)..."
-        if adb -s "$serial" shell "su -c '[ -f /data/misc/user/0/cacerts-added/$CERT_HASH.0 ]'" >/dev/null 2>&1; then
-            echo "[$serial] System certificate already injected. Skipping."
-        else
-            echo "[$serial] Injecting system certificate..."
-            adb -s "$serial" push "$CERT_PATH" "/data/local/tmp/$CERT_HASH.0" >/dev/null 2>&1
-            adb -s "$serial" shell "su -c '
-                mkdir -p /data/misc/user/0/cacerts-added
-                cp /data/local/tmp/$CERT_HASH.0 /data/misc/user/0/cacerts-added/$CERT_HASH.0
-                chown system:system /data/misc/user/0/cacerts-added/$CERT_HASH.0
-                chmod 644 /data/misc/user/0/cacerts-added/$CERT_HASH.0
-                mount -o rw,remount / 2>/dev/null
-                cp /data/local/tmp/$CERT_HASH.0 /system/etc/security/cacerts/$CERT_HASH.0
-                chmod 644 /system/etc/security/cacerts/$CERT_HASH.0
-                rm /data/local/tmp/$CERT_HASH.0
-            '"
-            echo "[$serial] Certificate injected. PLEASE REBOOT."
-        fi
+    # 3. ROOT Certificate Injection
+    if [ -n "$CERT_HASH" ] && [ -n "$HAS_SU" ]; then
+        echo "[$serial] Injecting/Updating system certificate everywhere..."
+        adb -s "$serial" push "$CERT_PATH" "/data/local/tmp/$CERT_HASH.0" >/dev/null 2>&1
+        
+        cat << 'EOF' > /tmp/cert_inject_$serial.sh
+CERT_FILE=$1
+# Ensure the user store has it
+mkdir -p /data/misc/user/0/cacerts-added
+cp /data/local/tmp/$CERT_FILE /data/misc/user/0/cacerts-added/$CERT_FILE
+chown system:system /data/misc/user/0/cacerts-added/$CERT_FILE
+chmod 644 /data/misc/user/0/cacerts-added/$CERT_FILE
+
+# Hunt down and overwrite any existing copies in /data (Magisk modules like trustusercerts)
+    # If trustusercerts module exists, force copy the cert into it
+    if [ -d "/data/adb/modules/trustusercerts/system/etc/security/cacerts" ]; then
+        cp /data/local/tmp/$CERT_FILE /data/adb/modules/trustusercerts/system/etc/security/cacerts/$CERT_FILE
+        chown root:root /data/adb/modules/trustusercerts/system/etc/security/cacerts/$CERT_FILE
+        chmod 644 /data/adb/modules/trustusercerts/system/etc/security/cacerts/$CERT_FILE
+        chcon u:object_r:system_security_cacerts_file:s0 /data/adb/modules/trustusercerts/system/etc/security/cacerts/$CERT_FILE 2>/dev/null
+    fi
+
+find /data -name "$CERT_FILE" 2>/dev/null | while read cert_path; do
+    cp /data/local/tmp/$CERT_FILE "$cert_path"
+    chown root:root "$cert_path" 2>/dev/null || chown system:system "$cert_path"
+    chmod 644 "$cert_path"
+    chcon u:object_r:system_security_cacerts_file:s0 "$cert_path" 2>/dev/null
+done
+
+# Try physical system partition as a fallback
+mount -o rw,remount / 2>/dev/null || mount -o rw,remount /system 2>/dev/null
+cp /data/local/tmp/$CERT_FILE /system/etc/security/cacerts/$CERT_FILE 2>/dev/null
+chown root:root /system/etc/security/cacerts/$CERT_FILE 2>/dev/null
+chmod 644 /system/etc/security/cacerts/$CERT_FILE 2>/dev/null
+
+rm -f /data/local/tmp/$CERT_FILE
+EOF
+        adb -s "$serial" push /tmp/cert_inject_$serial.sh /data/local/tmp/cert_inject.sh >/dev/null 2>&1
+        adb -s "$serial" shell "$HAS_SU -c 'sh /data/local/tmp/cert_inject.sh $CERT_HASH.0'"
+        adb -s "$serial" shell "$HAS_SU -c 'rm -f /data/local/tmp/cert_inject.sh'"
+        rm -f /tmp/cert_inject_$serial.sh
+        
+        echo "[$serial] Certificate injected safely. PLEASE REBOOT after Magisk module installation."
     fi
 
     # 4. System Tweak Pass Logic
-    # WebView check
-    WEBVIEW_STATUS=$(adb -s "$serial" shell pm list packages -d | grep com.google.android.webview)
-    if [ -z "$WEBVIEW_STATUS" ]; then
-        echo "[$serial] Downgrading/Disabling WebView..."
-        adb -s "$serial" shell pm uninstall com.google.android.webview >/dev/null 2>&1
-    fi
-
-    # Play Store check
-    PLAYSTORE_ENABLED=$(adb -s "$serial" shell pm list packages -e | grep com.android.vending)
-    if [ -n "$PLAYSTORE_ENABLED" ]; then
-        echo "[$serial] Disabling Google Play Store..."
-        adb -s "$serial" shell pm disable-user --user 0 com.android.vending >/dev/null 2>&1
-    fi
-
-    # Auto-rotation
+    adb -s "$serial" shell pm uninstall com.google.android.webview >/dev/null 2>&1
+    adb -s "$serial" shell pm disable-user --user 0 com.android.vending >/dev/null 2>&1
     adb -s "$serial" shell settings put system accelerometer_rotation 0 >/dev/null 2>&1
-    
-    # OTA updates
     adb -s "$serial" shell settings put global ota_disable_automatic_update 1 >/dev/null 2>&1
 done
 

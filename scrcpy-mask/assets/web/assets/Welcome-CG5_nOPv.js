@@ -1,1 +1,0 @@
-import{u as s,j as e}from"./index-HzwWOQt_.js";function n(){const{t}=s();return e.jsx("div",{className:"flex flex-col items-center justify-center h-full",children:e.jsx("h1",{className:"text-4xl font-bold",children:t("welcome.main")})})}export{n as default};

@@ -1,5 +1,6 @@
 #!/bin/bash
 # test_nmap_v2/lib/main.sh: Unified Task Execution Engine (V4.1 - Real IP Verification)
+export PATH="$HOME/.local/bin:$PATH"
 
 LIB_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 ROOT_DIR="$( cd "$LIB_DIR/.." && pwd )"; cd "$ROOT_DIR" || exit 1

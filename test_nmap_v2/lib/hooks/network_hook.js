@@ -103,14 +103,16 @@ function hook_java_all() {
     });
 }
 
-function hook_java_cronet_only() {
+function hook_safe_ssl_bypass() {
     if (!Java.available) return;
     Java.perform(function() {
+        // 1. OkHttp CertificatePinner
         try {
             var CertificatePinner = Java.use("okhttp3.CertificatePinner");
             CertificatePinner.check.overload('java.lang.String', 'java.util.List').implementation = function (hostname, certs) { return; };
         } catch (e) { }
 
+        // 2. Chromium X509Util (Old Cronet)
         try {
             var X509Util = Java.use("org.chromium.net.X509Util");
             var emptyList = Java.use("java.util.Collections").emptyList();
@@ -118,7 +120,27 @@ function hook_java_cronet_only() {
                 return emptyList;
             };
         } catch (e) { }
-        console.log("[+] Isolated Cronet/OkHttp Bypasses applied to fix Validity Too Long");
+
+        // 3. Android WebView Universal Bypass (Chrome Update Proof)
+        try {
+            var SslErrorHandler = Java.use("android.webkit.SslErrorHandler");
+            SslErrorHandler.cancel.implementation = function () {
+                this.proceed();
+            };
+            SslErrorHandler.proceed.implementation = function () {
+                this.proceed();
+            };
+        } catch (e) { }
+
+        // 4. TrustManagerImpl (Safe Hook, doesn't touch SSLContext to prevent ExoPlayer crash)
+        try {
+            var TrustManagerImpl = Java.use('com.android.org.conscrypt.TrustManagerImpl');
+            TrustManagerImpl.verifyChain.implementation = function (untrustedChain, trustAnchorChain, host, clientAuth, ocspData, tlsSctData) {
+                return untrustedChain;
+            };
+        } catch (e) { }
+
+        console.log("[+] Safe SSL Bypasses applied to fix Validity & WebView issues");
     });
 }
 
@@ -132,5 +154,5 @@ function hook_java_cronet_only() {
 // Java SSL 우회는 이미 적용된 LSPosed 모듈(TrustMeAlready 등)에 완전히 일임합니다.
 // setTimeout(hook_java_all, 600);
 
-// N-Log 및 Google Cronet 네트워크의 X509Util 한정으로 부분 훅 활성화! (ExoPlayer 영향 없음)
-setTimeout(hook_java_cronet_only, 800);
+// [SAFE BYPASS] 웹뷰 크롬 업데이트 대응 및 안전한 TrustManager 우회 (ExoPlayer 영향 없음)
+setTimeout(hook_safe_ssl_bypass, 800);
