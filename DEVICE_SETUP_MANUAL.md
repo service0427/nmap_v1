@@ -50,26 +50,31 @@
 
 ---
 
-## 4. 3단계: 네트워크 프록시 및 Frida 후킹 기반 실행
+## 4. 3단계: USB 안정성 및 MTP 차단 설정 (매우 중요 ⭐️)
 
-네이버 지도는 단순 앱 실행 시 자체적인 보안 로직과 SSL Pinning 방어 기제 때문에 일반적인 환경(그냥 Wi-Fi에 프록시만 잡고 켤 경우)에서는 무조건 **"네트워크 차단"** 또는 무한 로딩이 발생합니다.
+여러 대의 기기를 연결할 때 발생하는 **USB 미세 끊김(Bus Reset)**을 방지하기 위해 다음 설정을 반드시 확인합니다.
 
-반드시 **V2 시스템의 스크립트(`test_nmap_v2/run_single.sh` 또는 `lib/main.sh` 등)를 통해 앱을 실행**해야 합니다.
+1.  **MTP 완전 차단**: `install_devices.sh` 실행 시 자동으로 처리되지만, 수동 확인이 필요할 경우 기기 상단 바를 내려 USB 모드를 **'휴대전화 충전만(Charging Only)'**으로 변경합니다.
+2.  **워치독 작동 확인**: V2 엔진(`main.sh`)에는 터널 단절 시 **1초 내로 복구**하는 워치독이 포함되어 있습니다. 실행 로그(`execution.log`)에 `[⚠️] Tunnel lost! Restoring...` 메시지가 뜨더라도 주행이 멈추지 않는다면 정상입니다.
 
-**해당 스크립트들이 앱을 실행할 때 백그라운드에서 해주는 필수 작업들:**
-1.  **동적 프록시 할당**: `adb shell settings put global http_proxy localhost:MITM_PORT` 명령으로 통신을 Mitmproxy로 넘김.
-2.  **Frida Spawn 실행**: 앱을 단순히 터치해서 켜는 것이 아니라, Frida를 이용해 `_core_survival.js` 와 `network_hook.js` 스크립트를 주입(Inject)하면서 동시에 실행(Spawn)시킵니다.
-    *   *이 과정이 누락되면 앱 내의 통신 보안 모듈이 우회되지 않아 네트워크 차단이 발생합니다.*
+## 5. 4단계: NLOG 패킷 수집 및 HostnameVerifier 우회
+
+네이버 지도의 분석 로그(NLOG) 수집을 위해 `network_hook.js`에 **HostnameVerifier 우회 로직**이 포함되어 있습니다.
+
+*   **기능**: 인증서의 호스트 이름 불일치를 무시하여 `nlogapp` 패킷을 강제로 Mitmproxy로 끌어옵니다.
+*   **확인**: `logs/.../mitm.log` 또는 `.json` 파일 목록에 `019_POST_nlogapp.json` 등이 생성되는지 확인하세요.
 
 ---
 
 ## 💡 요약: 트러블슈팅 체크리스트
 
-신규 기기에서 네트워크가 차단될 때 확인해야 할 3가지:
+신규 기기에서 네트워크가 차단되거나 패킷이 안 쌓일 때 확인해야 할 4가지:
 
 1.  **Magisk 모듈이 활성화되어 있는가?**
-    *   Magisk 앱에서 Frida-Server(17.7.3)와 AlwaysTrustUserCerts가 '활성화' 상태인지 확인하세요.
-2.  **시스템 인증서가 올바르게 주입되었는가?**
-    *   기기 설정 -> 보안 -> 암호화 및 사용자 증명 -> '신뢰할 수 있는 자격증명(시스템)' 목록 하단에 `mitmproxy`가 있는지 확인하세요.
-3.  **앱을 런처에서 손으로 직접 켰는가?**
-    *   절대 손으로 켜지 마세요. 제어 서버의 V2 실행 스크립트(`run_single.sh` 등)를 통해서만 구동해야 생존용(Survival) Frida 후킹이 주입되어 네트워크 차단을 방지합니다.
+    *   `magisk --install-module` 명령으로 자동 설치되지만, 기기 재부팅 후 Magisk 앱에서 '활성화' 상태인지 꼭 확인하세요.
+2.  **USB 모드가 '충전 전용'인가?**
+    *   MTP가 켜져 있으면 데이터 전송 대역폭 문제로 터널이 자주 끊길 수 있습니다.
+3.  **인증서가 시스템 단에 주입되었는가?**
+    *   `mitmproxy` 인증서가 시스템 자격증명 목록에 있어야 NLOG 네이티브 통신이 뚫립니다.
+4.  **최신 Frida 후킹 스크립트인가?**
+    *   `HostnameVerifier.verify.implementation = function(...) { return true; }` 코드가 `network_hook.js`에 있는지 확인하세요.

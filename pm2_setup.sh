@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+# pm2_setup.sh: Register Nmap services to PM2 for production automation
+
+PROJECT_ROOT="/home/tech/nmap"
+cd "$PROJECT_ROOT" || exit 1
+
+echo "============================================================"
+echo "   Nmap Production Service Registration (PM2)"
+echo "============================================================"
+
+# 1. Ensure PM2 is installed
+if ! command -v pm2 >/dev/null 2>&1; then
+    echo "[*] PM2 not found. Installing..."
+    sudo npm install -g pm2
+fi
+
+# 2. Register Web Monitor
+if [ -f "utils/web_monitor.py" ]; then
+    echo "[*] Registering Nmap Web Monitor..."
+    pm2 delete nmap-monitor 2>/dev/null
+    pm2 start utils/web_monitor.py --name "nmap-monitor" --interpreter python3
+else
+    echo "[!] utils/web_monitor.py not found. Skipping."
+fi
+
+# 3. Register Scheduler (Runner)
+if [ -f "test_nmap_v2/run_scheduler.sh" ]; then
+    echo "[*] Registering Nmap Scheduler..."
+    chmod +x test_nmap_v2/run_scheduler.sh
+    pm2 delete nmap-scheduler 2>/dev/null
+    pm2 start test_nmap_v2/run_scheduler.sh --name "nmap-scheduler"
+else
+    echo "[!] test_nmap_v2/run_scheduler.sh not found. Skipping."
+fi
+
+# 4. Save & Setup Startup
+echo "[*] Finalizing PM2 configuration..."
+pm2 save
+pm2 startup | tail -n 1 | bash 2>/dev/null
+
+echo "============================================================"
+echo "   PM2 Setup Complete!"
+echo "   - Monitor: http://<Server-IP>:8080"
+echo "   - Commands: pm2 list, pm2 logs, pm2 monit"
+echo "============================================================"

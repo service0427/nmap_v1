@@ -2,6 +2,14 @@
 # test_nmap_v2/lib/main.sh: Unified Task Execution Engine (V4.1 - Real IP Verification)
 export PATH="$HOME/.local/bin:$PATH"
 
+# --- [ADB TIMEOUT WRAPPER] ---
+# ADB 서버 데드락 및 좀비 프로세스 방지를 위해 모든 adb 명령에 10초 타임아웃 적용
+# 'command'는 쉘 내장 명령어라 timeout이 실행할 수 없으므로 실제 경로(/usr/bin/adb)를 사용합니다.
+adb() {
+    timeout 10 /usr/bin/adb "$@"
+}
+export -f adb
+
 LIB_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 ROOT_DIR="$( cd "$LIB_DIR/.." && pwd )"; cd "$ROOT_DIR" || exit 1
 
@@ -133,7 +141,11 @@ nohup frida -H localhost:"$NMAP_FRIDA_PORT" --runtime=v8 -f "$PKG_NAME" \
     --no-auto-reload > "$FRIDA_LOG" 2>&1 &
 FRIDA_PID=$!
 
-LOCK_FILE="/tmp/nmap_lock_${DEV_ID}"
+# 기기별 격리된 tmp 폴더 경로 설정 및 생성
+DEV_TMP_DIR="${ROOT_DIR}/logs/${DEV_ID}/tmp"
+mkdir -p "$DEV_TMP_DIR"
+LOCK_FILE="${DEV_TMP_DIR}/nmap_lock"
+
 ( while true; do touch "$LOCK_FILE"; sleep 10; done ) &
 HEARTBEAT_PID=$!
 

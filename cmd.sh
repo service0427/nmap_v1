@@ -31,6 +31,9 @@ case "$1" in
     --speed)
         bash "$CMD_DIR/speed.sh" "$2" "$3"
         ;;
+    --no-mtp)
+        bash "$CMD_DIR/disable_mtp.sh"
+        ;;
     --reboot)
         bash "$CMD_DIR/reboot.sh"
         ;;

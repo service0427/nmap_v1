@@ -29,9 +29,14 @@ def get_ui_dump_pair(device_id, category_name):
     png_file = os.path.join(target_dir, f"capture_{device_id}_{timestamp}.png")
     
     try:
+        # 기기별 격리된 tmp 폴더 경로 확보
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        dev_tmp_dir = os.path.join(root_dir, "logs", device_id, "tmp")
+        os.makedirs(dev_tmp_dir, exist_ok=True)
+        
         # [V2.5] Added timeout to prevent infinite hang of uiautomator dump
         subprocess.run(["adb", "-s", device_id, "shell", "uiautomator", "dump", "/sdcard/ui.xml"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=15)
-        temp_xml = f"/tmp/raw_{device_id}.xml"
+        temp_xml = os.path.join(dev_tmp_dir, f"raw_{device_id}.xml")
         subprocess.run(["adb", "-s", device_id, "pull", "/sdcard/ui.xml", temp_xml], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=10)
         tree = ET.parse(temp_xml)
         save_multiline_xml(tree.getroot(), xml_file)
@@ -147,7 +152,7 @@ def report_fail(log_id, device_id, status, requested, actual, error):
     }
     api_server = os.environ.get('API_SERVER', 'localhost:5003')
     try:
-        subprocess.run(["curl", "-s", "-X", "POST", f"http://{api_server}/api/v1/update_status", "-H", "Content-Type: application/json", "-d", json.dumps(data)], stdout=subprocess.DEVNULL)
+        subprocess.run(["curl", "-s", "--connect-timeout", "5", "-X", "POST", f"http://{api_server}/api/v1/update_status", "-H", "Content-Type: application/json", "-d", json.dumps(data)], stdout=subprocess.DEVNULL, timeout=10)
     except: pass
 
 def click_element(device_id, query, padding=10, category="default"):
@@ -176,9 +181,13 @@ def click_element(device_id, query, padding=10, category="default"):
             if ry_start >= ry_end: ry_end = ry_start + 1
             
             target_x = random.randrange(rx_start, rx_end); target_y = random.randrange(ry_start, ry_end)
-            subprocess.run(["adb", "-s", device_id, "shell", "input", "tap", str(target_x), str(target_y)])
-            print(f" [✓] Clicked {query} at ({target_x}, {target_y})")
-            return True
+            try:
+                subprocess.run(["adb", "-s", device_id, "shell", "input", "tap", str(target_x), str(target_y)], timeout=10)
+                print(f" [✓] Clicked {query} at ({target_x}, {target_y})")
+                return True
+            except subprocess.TimeoutExpired:
+                print(f" [-] Click Timeout (10s)")
+                return False
             
         print(f" [-] Element not found [{query}]. XML: {os.path.basename(xml_path)} | Retry {attempt+1}/3...")
         time.sleep(2)
@@ -220,7 +229,11 @@ def chain_click(device_id, queries, padding=10, category="default", delay_range=
             rx_start, rx_end = sorted([x1+padding, x2-padding]); ry_start, ry_end = sorted([y1+padding, y2-padding])
             tx = random.randrange(rx_start, rx_end if rx_end > rx_start else rx_start+1)
             ty = random.randrange(ry_start, ry_end if ry_end > rx_start else ry_start+1)
-            subprocess.run(["adb", "-s", device_id, "shell", "input", "tap", str(tx), str(ty)])
+            try:
+                subprocess.run(["adb", "-s", device_id, "shell", "input", "tap", str(tx), str(ty)], timeout=10)
+            except subprocess.TimeoutExpired:
+                print(f" [-] Chain Click Timeout (10s)")
+                return False
             if i < len(targets) - 1: time.sleep(random.uniform(*delay_range))
         return True
     return False

@@ -56,7 +56,13 @@ def move_gps_to_target(device_id, target_lat, target_lng):
     """2단계: 목적지 좌표로 GPS 순간이동"""
     pkg = "com.rosteam.gpsemulator"
     log_print(f"[🛡️] SAFETY STEP 2: Force Moving GPS to Target: {target_lat}, {target_lng}")
-    local_xml = f"/tmp/force_prefs_{device_id}.xml"
+    
+    # 기기별 격리된 tmp 폴더 경로 확보
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    dev_tmp_dir = os.path.join(script_dir, "..", "logs", device_id, "tmp")
+    os.makedirs(dev_tmp_dir, exist_ok=True)
+    local_xml = os.path.join(dev_tmp_dir, "force_prefs.xml")
+    
     with open(local_xml, "w") as f:
         f.write(f"<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n")
         f.write(f'    <boolean name="noads" value="true" />\n')

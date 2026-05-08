@@ -30,7 +30,7 @@ pkill -9 -f "frida"
 sleep 2
 
 get_devices() {
-    if [ -n "$SINGLE_DEV_ID" ]; then echo "$SINGLE_DEV_ID"; else adb devices | grep -w "device" | awk '{print $1}'; fi
+    if [ -n "$SINGLE_DEV_ID" ]; then echo "$SINGLE_DEV_ID"; else timeout 5 /usr/bin/adb devices | grep -w "device" | awk '{print $1}'; fi
 }
 
 LAST_CLEANUP=0
@@ -38,8 +38,9 @@ while true; do
     # --- [AUTO CLEANUP] Keep only 7 days of logs ---
     CUR_TS=$(date +%s)
     if [ $((CUR_TS - LAST_CLEANUP)) -gt 3600 ]; then
-        log_info "Cleanup: Removing logs older than 7 days..."
-        find "$(dirname "$0")/logs" -mindepth 2 -maxdepth 2 -type d -mtime +7 -exec rm -rf {} + 2>/dev/null
+        log_info "Cleanup: Removing logs older than 7 days (protecting system folders)..."
+        # 숫자 8자리(날짜) 형식의 폴더만 타겟팅하여 tmp나 기타 설정 폴더가 삭제되는 것을 원천 차단
+        find "$(dirname "$0")/logs" -mindepth 2 -maxdepth 2 -type d -name "20[0-9][0-9][0-9][0-9][0-9][0-9]" -mtime +7 -exec rm -rf {} + 2>/dev/null
         LAST_CLEANUP=$CUR_TS
     fi
 
@@ -54,22 +55,22 @@ while true; do
     log_info "Scanning $(echo $DEVICES | wc -w) devices..."
 
     for DEV_ID in $DEVICES; do
-        # 1. 프로세스 체크 (더 포괄적으로 체크)
-        # lib/main.sh $DEV_ID 프로세스가 하나라도 있으면 Busy로 간주
+        # 기기별 격리된 tmp 폴더 생성
+        DEV_TMP_DIR="$(dirname "$0")/logs/${DEV_ID}/tmp"
+        mkdir -p "$DEV_TMP_DIR"
+
+        # 1. 프로세스 체크 (격리된 락파일 사용)
         SCRIPT_PIDS=$(pgrep -f "lib/main.sh $DEV_ID" | xargs)
         
         if [ -n "$SCRIPT_PIDS" ]; then
-            # 단순히 떠있는 것뿐만 아니라, 락파일의 생존 여부 확인
-            LOCK_FILE="/tmp/nmap_lock_${DEV_ID}"
+            LOCK_FILE="${DEV_TMP_DIR}/nmap_lock"
             LOCK_TIME=$(stat -c %Y "$LOCK_FILE" 2>/dev/null || echo 0)
             if [ "$LOCK_TIME" -gt 0 ]; then
                 AGE=$(( $(date +%s) - LOCK_TIME ))
                 if [ $AGE -lt 45 ]; then
-                    # 정상이므로 다음 기기로 넘어감
                     continue
                 fi
             fi
-            # 락파일이 너무 오래되었거나 프로세스가 꼬인 경우만 청소
             log_info "[$DEV_ID] STALE session ($AGE s). Purging PIDs: $SCRIPT_PIDS"
             kill -9 $SCRIPT_PIDS 2>/dev/null
             rm -f "$LOCK_FILE"
@@ -77,7 +78,7 @@ while true; do
 
         # 2. 기기 상태 체크 (앱이 포그라운드인지)
         # [중요] 앱이 떠있으면 주행 중이거나 로딩 중이므로 절대 새 작업 할당 안 함
-        CURRENT_FOCUS=$(adb -s "$DEV_ID" shell "dumpsys activity activities | grep -E 'mResumedActivity|mCurrentFocus|topResumedActivity' | grep $PKG_NAME" 2>/dev/null)
+        CURRENT_FOCUS=$(timeout 5 /usr/bin/adb -s "$DEV_ID" shell "dumpsys activity activities | grep -E 'mResumedActivity|mCurrentFocus|topResumedActivity' | grep $PKG_NAME" 2>/dev/null)
         if [ -n "$CURRENT_FOCUS" ]; then
             continue
         fi
@@ -102,15 +103,16 @@ while true; do
         SPOOFED_JSON=$(echo "$RESPONSE" | jq -c '.identity.spoofed')
         curl -s -X POST "http://$API_SERVER/api/v1/update_status" \
              -H "Content-Type: application/json" \
-             -d "{\"log_id\": $LOG_ID, \"status\": \"ALLOCATED\", \"device_id\": \"$DEV_ID\", \"spoofed_identity\": $SPOOFED_JSON}" >> /tmp/main_debug_$DEV_ID.log
+             -d "{\"log_id\": $LOG_ID, \"status\": \"ALLOCATED\", \"device_id\": \"$DEV_ID\", \"spoofed_identity\": $SPOOFED_JSON}" >> "${DEV_TMP_DIR}/main_debug.log"
 
         # Socket Purge
-        adb -s "$DEV_ID" forward --remove tcp:$FRIDA_PORT >/dev/null 2>&1 || true
+        timeout 5 /usr/bin/adb -s "$DEV_ID" forward --remove tcp:$FRIDA_PORT >/dev/null 2>&1 || true
         fuser -k -n tcp "$MITM_PORT" >/dev/null 2>&1
         sleep 1
 
         # 4. EXECUTE V2 ENGINE (환경변수 주입 후 백그라운드 실행)
         # setsid를 사용하여 loop.sh와 완전히 분리된 세션에서 실행
+        DEBUG_LOG="${DEV_TMP_DIR}/main_debug.log"
         NMAP_API_RESPONSE="$RESPONSE" \
         NMAP_LOG_ID="$LOG_ID" \
         NMAP_DEST_ID=$(echo "$RESPONSE" | jq -r '.destination.id') \
@@ -132,7 +134,7 @@ while true; do
         NMAP_ORIG_TOKEN=$(echo "$RESPONSE" | jq -r '.identity.original.token') \
         NMAP_FRIDA_PORT="$FRIDA_PORT" \
         NMAP_NO_IP="$SKIP_IP" \
-        setsid bash lib/main.sh "$DEV_ID" >> /tmp/main_debug_$DEV_ID.log 2>&1 &
+        setsid bash lib/main.sh "$DEV_ID" >> "$DEBUG_LOG" 2>&1 &
         
         log_info "[$DEV_ID] Engine forked successfully."
         sleep 2

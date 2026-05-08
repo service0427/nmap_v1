@@ -82,13 +82,13 @@ date
 # 5. 패키지 리스트 업데이트 및 기본 도구 설치
 echo "[*] Updating package list & Installing basic tools..."
 sudo apt update
-sudo apt install -y git screen adb curl wget build-essential cron net-tools nano ffmpeg jq
+sudo apt install -y git screen adb curl wget build-essential cron net-tools nano ffmpeg jq openssl libssl-dev zlib1g-dev libffi-dev
 
-# 6. Python 및 blackboxprotobuf 설치
-echo "[*] Installing Python3 and blackboxprotobuf..."
+# 6. Python 및 필수 라이브러리 설치
+echo "[*] Installing Python3 and required libraries..."
 sudo apt install -y python3 python3-pip python3-dev python3-venv
-sudo python3 -m pip install --upgrade pip --break-system-packages || sudo python3 -m pip install --upgrade pip
-sudo python3 -m pip install blackboxprotobuf flask --break-system-packages || sudo python3 -m pip install blackboxprotobuf flask
+sudo python3 -m pip install --upgrade pip --break-system-packages
+sudo python3 -m pip install blackboxprotobuf flask frida-tools mitmproxy requests --break-system-packages
 
 # 7. Node.js 최신 LTS 버전 설치
 echo "[*] Installing Node.js (Latest LTS)..."

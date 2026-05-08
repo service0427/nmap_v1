@@ -17,7 +17,11 @@ def type_humanized(device_id, text):
         
         # ADB Input per character
         cmd = ["adb", "-s", device_id, "shell", "am", "broadcast", "-a", "ADB_INPUT_B64", "--es", "msg", encoded]
-        subprocess.run(cmd, capture_output=True)
+        try:
+            subprocess.run(cmd, capture_output=True, timeout=5)
+        except subprocess.TimeoutExpired:
+            print(f" [-] Typing character '{char}' Timeout (5s)")
+            break
         
         # Delay logic: 1-5 chars (0.1~0.5s), 6+ chars (0.1s)
         if i < 5:

@@ -1,6 +1,12 @@
 #!/bin/bash
 # test_nmap_v2/gps/static.sh: Multi-device Static GPS Initializer
 
+# --- [ADB TIMEOUT WRAPPER] ---
+# 'command' 대신 실제 경로를 사용하여 timeout이 정상적으로 실행되도록 합니다.
+adb() {
+    timeout 10 /usr/bin/adb "$@"
+}
+
 DEVICE_ID=$1
 BASE_LAT=$2
 BASE_LNG=$3
@@ -28,8 +34,12 @@ print(f'{target_lat:.7f},{target_lng:.7f}')
 TARGET_LAT=$(echo $RAND_COORD | cut -d',' -f1)
 TARGET_LNG=$(echo $RAND_COORD | cut -d',' -f2)
 
-# 2. XML 생성 (정적 모드)
-LOCAL_XML="/tmp/static_prefs_${DEVICE_ID}.xml"
+# 2. XML 생성 (정적 모드 - 기기별 격리된 tmp 폴더 사용)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+DEV_TMP_DIR="${SCRIPT_DIR}/../logs/${DEVICE_ID}/tmp"
+mkdir -p "$DEV_TMP_DIR"
+LOCAL_XML="${DEV_TMP_DIR}/static_prefs.xml"
+
 cat <<EOF > "$LOCAL_XML"
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>

@@ -123,11 +123,29 @@ EOF
         echo "[$serial] Certificate injected safely. PLEASE REBOOT after Magisk module installation."
     fi
 
-    # 4. System Tweak Pass Logic
+    # 4. System Tweak & MTP Lockout
+    echo "[$serial] Applying System Tweaks & MTP Lockout..."
+    # 4.1 USB Stability: Set Persistent USB to ADB Only (No MTP)
+    adb -s "$serial" shell "su -c 'setprop persist.sys.usb.config adb && setprop sys.usb.config adb && svc usb setFunctions adb'" 2>/dev/null
+    
+    # 4.2 Disable Bloatware & MTP packages
     adb -s "$serial" shell pm uninstall com.google.android.webview >/dev/null 2>&1
     adb -s "$serial" shell pm disable-user --user 0 com.android.vending >/dev/null 2>&1
+    adb -s "$serial" shell pm disable-user --user 0 com.samsung.android.mtp >/dev/null 2>&1 || true
+    adb -s "$serial" shell pm disable-user --user 0 com.samsung.android.mtpapplication >/dev/null 2>&1 || true
+    adb -s "$serial" shell pm disable-user --user 0 com.android.mtp >/dev/null 2>&1 || true
+
+    # 4.3 UI Settings
     adb -s "$serial" shell settings put system accelerometer_rotation 0 >/dev/null 2>&1
     adb -s "$serial" shell settings put global ota_disable_automatic_update 1 >/dev/null 2>&1
+
+    # 5. [EXPERIMENTAL] Automatic Magisk Module Installation
+    echo "[$serial] Attempting automatic Magisk module installation..."
+    for mod in /sdcard/Download/*.zip; do
+        [ -e "$mod" ] || continue
+        echo "    -> Installing module: $(basename "$mod")"
+        adb -s "$serial" shell "$HAS_SU -c 'magisk --install-module \"$mod\"'" >/dev/null 2>&1
+    done
 done
 
 echo "--------------------------------------------------"
