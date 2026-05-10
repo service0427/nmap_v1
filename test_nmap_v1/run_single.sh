@@ -30,9 +30,26 @@ PKG_NAME="com.nhn.android.nmap"
 GPS_PKG="com.rosteam.gpsemulator"
 
 # 0. Environment Setup
-export PATH=$PATH:$HOME/.local/bin
-if ! command -v mitmdump &> /dev/null; then echo -e "\e[1;31m[-] mitmdump not found\e[0m"; exit 1; fi
-if ! command -v frida &> /dev/null; then echo -e "\e[1;31m[-] frida not found\e[0m"; exit 1; fi
+# Add common pip/python installation paths to PATH
+export PATH=$PATH:/usr/local/bin:$HOME/.local/bin
+
+# Robust command checking function
+check_cmd() {
+    if ! command -v "$1" &> /dev/null; then
+        # Try finding in common python user bin if not in PATH
+        if [ -f "$HOME/.local/bin/$1" ]; then
+            export PATH="$PATH:$HOME/.local/bin"
+        elif [ -f "/usr/local/bin/$1" ]; then
+            export PATH="$PATH:/usr/local/bin"
+        else
+            return 1
+        fi
+    fi
+    return 0
+}
+
+if ! check_cmd "mitmdump"; then echo -e "\e[1;31m[-] mitmdump not found. Try: pip3 install mitmproxy\e[0m"; exit 1; fi
+if ! check_cmd "frida"; then echo -e "\e[1;31m[-] frida not found. Try: pip3 install frida-tools\e[0m"; exit 1; fi
 
 CYAN="\e[1;36m"; GREEN="\e[1;32m"; YELLOW="\e[1;33m"; NC="\e[0m"
 
