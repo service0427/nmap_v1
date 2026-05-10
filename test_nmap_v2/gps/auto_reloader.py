@@ -99,6 +99,20 @@ def update_session_summary(log_dir, data):
     except Exception as e:
         log_print(f" [!] Summary Update Fail: {e}")
 
+def update_current_task_badge(device_id, data):
+    """[NEW] 웹 모니터용 실시간 명표(current_task.json) 정보 보강"""
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        badge_path = os.path.join(script_dir, "..", "logs", device_id, "current_task.json")
+        if os.path.exists(badge_path):
+            with open(badge_path, 'r') as f:
+                current = json.load(f)
+            current.update(data)
+            with open(badge_path, 'w') as f:
+                json.dump(current, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        log_print(f" [!] Badge Update Fail: {e}")
+
 def main(log_dir, device_id):
     try:
         min_arr = float(os.environ.get("NMAP_MIN_ARRIVAL", 10))
@@ -144,6 +158,13 @@ def main(log_dir, device_id):
                             update_session_summary(log_dir, {
                                 "total_distance_km": round(dist, 3),
                                 "path_loaded_time": datetime.datetime.now().isoformat()
+                            })
+                            
+                            # [NEW] 확정된 주행 목표 데이터를 웹 모니터 명표에 기록
+                            update_current_task_badge(device_id, {
+                                "target_sec": total_target_sec,
+                                "total_dist_km": round(dist, 3),
+                                "avg_speed_kmh": round((dist / (total_target_sec / 3600)), 1) if total_target_sec > 0 else 0
                             })
                             
                             script_dir = os.path.dirname(os.path.abspath(__file__))

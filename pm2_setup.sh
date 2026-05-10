@@ -2,11 +2,13 @@
 
 # pm2_setup.sh: Register Nmap services to PM2 for production automation
 
-PROJECT_ROOT="/home/tech/nmap"
+# Determine the absolute path of the directory where this script is located
+PROJECT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$PROJECT_ROOT" || exit 1
 
 echo "============================================================"
 echo "   Nmap Production Service Registration (PM2)"
+echo "   Root: $PROJECT_ROOT"
 echo "============================================================"
 
 # 1. Ensure PM2 is installed
@@ -41,6 +43,5 @@ pm2 startup | tail -n 1 | bash 2>/dev/null
 
 echo "============================================================"
 echo "   PM2 Setup Complete!"
-echo "   - Monitor: http://<Server-IP>:8080"
 echo "   - Commands: pm2 list, pm2 logs, pm2 monit"
 echo "============================================================"

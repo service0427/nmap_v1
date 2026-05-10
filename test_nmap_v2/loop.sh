@@ -1,5 +1,5 @@
 #!/bin/bash
-# test_nmap_v2: Smart Multi-Device Task Orchestrator (V2.9.5 - Anti-Storm Logic)
+# test_nmap_v2: Smart Multi-Device Task Orchestrator (V2.9.6 - Global Safety & Recovery)
 
 # Parse Arguments
 SKIP_IP=false; SINGLE_DEV_ID=""
@@ -17,8 +17,8 @@ log_success() { echo "[$(NOW)] [🚀] $1"; }
 log_busy() { echo "[$(NOW)] [⏳] $1"; }
 
 echo "============================================================"
-echo "   NMAP V2 DYNAMIC TASK ORCHESTRATOR (V2.9.5)"
-echo "   Action: Anti-Storm & Robust Busy Detection"
+echo "   NMAP V2 DYNAMIC TASK ORCHESTRATOR (V2.9.6)"
+echo "   Action: Global Safety & Offline Recovery"
 echo "============================================================"
 
 # 0. Initial Purge
@@ -39,14 +39,22 @@ while true; do
     CUR_TS=$(date +%s)
     if [ $((CUR_TS - LAST_CLEANUP)) -gt 3600 ]; then
         log_info "Cleanup: Removing logs older than 7 days (protecting system folders)..."
-        # 숫자 8자리(날짜) 형식의 폴더만 타겟팅하여 tmp나 기타 설정 폴더가 삭제되는 것을 원천 차단
         find "$(dirname "$0")/logs" -mindepth 2 -maxdepth 2 -type d -name "20[0-9][0-9][0-9][0-9][0-9][0-9]" -mtime +7 -exec rm -rf {} + 2>/dev/null
         LAST_CLEANUP=$CUR_TS
     fi
 
     DEVICES=$(get_devices)
     if [ -z "$DEVICES" ]; then
-        log_info "No devices detected. Retrying in 10s..."
+        # [V2.9.6] Offline Recovery: 아무 기기도 없거나 offline인 경우 adb reconnect 시도
+        OFFLINE_DEVICES=$(/usr/bin/adb devices | grep -w "offline" | awk '{print $1}')
+        if [ -n "$OFFLINE_DEVICES" ]; then
+            log_info "Offline devices detected: $OFFLINE_DEVICES. Attempting reconnect..."
+            for OFF_ID in $OFFLINE_DEVICES; do
+                /usr/bin/adb -s "$OFF_ID" reconnect 2>/dev/null
+            done
+            sleep 2
+        fi
+        log_info "No active devices detected. Retrying in 10s..."
         sleep 10
         continue
     fi
@@ -59,9 +67,35 @@ while true; do
         DEV_TMP_DIR="$(dirname "$0")/logs/${DEV_ID}/tmp"
         mkdir -p "$DEV_TMP_DIR"
 
-        # 1. 프로세스 체크 (격리된 락파일 사용)
+        # 1. 프로세스 및 타임아웃 체크 (격리된 락파일 및 current_task.json 사용)
         SCRIPT_PIDS=$(pgrep -f "lib/main.sh $DEV_ID" | xargs)
+        CURRENT_TASK_JSON="$(dirname "$0")/logs/${DEV_ID}/current_task.json"
         
+        # [V2.9.6] Global Safety: current_task.json 기반 15분 강제 종료
+        if [ -f "$CURRENT_TASK_JSON" ]; then
+            START_TS=$(jq -r '.start_ts // 0' "$CURRENT_TASK_JSON" 2>/dev/null)
+            NOW_TS=$(date +%s)
+            AGE=$((NOW_TS - START_TS))
+            
+            if [ "$AGE" -gt 900 ]; then
+                log_info "[$DEV_ID] GLOBAL TIMEOUT ($AGE s > 15m). Force Purging everything..."
+                [ -n "$SCRIPT_PIDS" ] && kill -9 $SCRIPT_PIDS 2>/dev/null
+                timeout 5 /usr/bin/adb -s "$DEV_ID" shell am force-stop $PKG_NAME 2>/dev/null
+                rm -f "$CURRENT_TASK_JSON"
+                rm -f "${DEV_TMP_DIR}/nmap_lock"
+                continue
+            fi
+        fi
+
+        # [V2.9.6] Ghost App Detection: 프로세스는 없는데 앱만 떠있는 경우
+        CURRENT_FOCUS=$(timeout 5 /usr/bin/adb -s "$DEV_ID" shell "dumpsys activity activities | grep -E 'mResumedActivity|mCurrentFocus|topResumedActivity' | grep $PKG_NAME" 2>/dev/null)
+        if [ -n "$CURRENT_FOCUS" ] && [ -z "$SCRIPT_PIDS" ]; then
+            log_info "[$DEV_ID] GHOST APP detected (No script running). Force stopping..."
+            timeout 5 /usr/bin/adb -s "$DEV_ID" shell am force-stop $PKG_NAME 2>/dev/null
+            continue
+        fi
+
+        # 기존 스케줄러 락파일 체크 (하트비트용)
         if [ -n "$SCRIPT_PIDS" ]; then
             LOCK_FILE="${DEV_TMP_DIR}/nmap_lock"
             LOCK_TIME=$(stat -c %Y "$LOCK_FILE" 2>/dev/null || echo 0)
@@ -73,12 +107,12 @@ while true; do
             fi
             log_info "[$DEV_ID] STALE session ($AGE s). Purging PIDs: $SCRIPT_PIDS"
             kill -9 $SCRIPT_PIDS 2>/dev/null
+            timeout 5 /usr/bin/adb -s "$DEV_ID" shell am force-stop $PKG_NAME 2>/dev/null
             rm -f "$LOCK_FILE"
+            rm -f "$CURRENT_TASK_JSON"
         fi
 
         # 2. 기기 상태 체크 (앱이 포그라운드인지)
-        # [중요] 앱이 떠있으면 주행 중이거나 로딩 중이므로 절대 새 작업 할당 안 함
-        CURRENT_FOCUS=$(timeout 5 /usr/bin/adb -s "$DEV_ID" shell "dumpsys activity activities | grep -E 'mResumedActivity|mCurrentFocus|topResumedActivity' | grep $PKG_NAME" 2>/dev/null)
         if [ -n "$CURRENT_FOCUS" ]; then
             continue
         fi
@@ -110,8 +144,7 @@ while true; do
         fuser -k -n tcp "$MITM_PORT" >/dev/null 2>&1
         sleep 1
 
-        # 4. EXECUTE V2 ENGINE (환경변수 주입 후 백그라운드 실행)
-        # setsid를 사용하여 loop.sh와 완전히 분리된 세션에서 실행
+        # 4. EXECUTE V2 ENGINE
         DEBUG_LOG="${DEV_TMP_DIR}/main_debug.log"
         NMAP_API_RESPONSE="$RESPONSE" \
         NMAP_LOG_ID="$LOG_ID" \
@@ -140,6 +173,5 @@ while true; do
         sleep 2
     done
     
-    # 다음 전체 스캔까지 대기 (폭풍 할당 방지)
     sleep 20
 done

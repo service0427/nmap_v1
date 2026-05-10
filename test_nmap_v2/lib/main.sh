@@ -94,6 +94,22 @@ fi
 # 1.6 Initialize Session Summary
 echo "{\"log_id\": $NMAP_LOG_ID, \"device_id\": \"$DEV_ID\", \"real_ip\": \"$NMAP_REAL_IP\", \"task_start_time\": \"$(date +%Y-%m-%dT%H:%M:%S)\", \"status\": \"STARTED\"}" > "$CAPTURE_LOG_DIR/session_summary.json"
 
+# [NEW] Create Live Task Badge for Web Monitor
+CURRENT_TASK_JSON="${ROOT_DIR}/logs/${DEV_ID}/current_task.json"
+jq -n \
+  --arg lid "$NMAP_LOG_ID" \
+  --arg dname "$NMAP_DEST_NAME" \
+  --arg tmin "$NMAP_MIN_ARRIVAL" \
+  --arg tmax "$NMAP_MAX_ARRIVAL" \
+  --arg sts "$(date +%s)" \
+  --arg siso "$(date -Iseconds)" \
+  --arg ip "$NMAP_REAL_IP" \
+  --arg path "$LOG_REL_PATH" \
+  --arg fport "$NMAP_FRIDA_PORT" \
+  --arg mport "$NMAP_MITM_PORT" \
+  '{log_id: $lid, dest_name: $dname, target_range: ($tmin + "~" + $tmax), start_ts: ($sts|tonumber), start_iso: $siso, real_ip: $ip, session_path: $path, ports: {frida: $fport, mitm: $mport}}' \
+  > "$CURRENT_TASK_JSON" 2>/dev/null
+
 # 2. Cleanup & IME Setup
 adb -s "$DEV_ID" shell am force-stop $PKG_NAME
 adb -s "$DEV_ID" shell am force-stop $GPS_PKG
@@ -164,6 +180,7 @@ cleanup() {
     adb -s "$DEV_ID" reverse --remove tcp:"$NMAP_MITM_PORT" 2>/dev/null
     adb -s "$DEV_ID" forward --remove tcp:"$NMAP_FRIDA_PORT" 2>/dev/null
     rm -f "$LOCK_FILE"
+    rm -f "$CURRENT_TASK_JSON"
     echo "[$DEV_ID] Session terminated safely."
     exit 0
 }
