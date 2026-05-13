@@ -31,8 +31,9 @@ if [ -f "test_nmap_v2/run_scheduler.sh" ]; then
     echo "[*] Registering Nmap Scheduler (STOPPED state)..."
     chmod +x test_nmap_v2/run_scheduler.sh
     pm2 delete nmap-scheduler 2>/dev/null
-    # --no-start 옵션을 사용하여 등록만 하고 실행은 하지 않음
-    pm2 start test_nmap_v2/run_scheduler.sh --name "nmap-scheduler" --no-start
+    # 일단 등록한 뒤 바로 중지 상태로 만듦
+    pm2 start test_nmap_v2/run_scheduler.sh --name "nmap-scheduler"
+    pm2 stop nmap-scheduler
 else
     echo "[!] test_nmap_v2/run_scheduler.sh not found. Skipping."
 fi
