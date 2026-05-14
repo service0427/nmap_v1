@@ -23,7 +23,7 @@ SESSION_STORAGE_OFFSET = random.randint(-500000000, 500000000)
 SESSION_BOOT_OFFSET_MS = random.randint(300000, 86400000)
 SESSION_INSTALL_OFFSET_SEC = random.randint(86400, 604800)
 # [V2.1.7] App initialization timestamp offset (Install + 60~600s jitter)
-SESSION_INIT_OFFSET_MS = (SESSION_INSTALL_OFFSET_SEC * 1000) + random.randint(60000, 600000)
+SESSION_INIT_OFFSET_MS = (SESSION_INSTALL_OFFSET_SEC * 1000) - random.randint(60000, 600000)
 
 def smart_cleanse(obj):
     """Recursive identity washing using simple string/byte replacement.
