@@ -35,14 +35,6 @@ get_devices() {
 
 LAST_CLEANUP=0
 while true; do
-    # --- [AUTO CLEANUP] Keep only 3 days of logs ---
-    CUR_TS=$(date +%s)
-    if [ $((CUR_TS - LAST_CLEANUP)) -gt 3600 ]; then
-        log_info "Cleanup: Removing logs older than 3 days (protecting system folders)..."
-        find "$(dirname "$0")/logs" -mindepth 2 -maxdepth 2 -type d -name "20[0-9][0-9][0-9][0-9][0-9][0-9]" -mtime +3 -exec rm -rf {} + 2>/dev/null
-        LAST_CLEANUP=$CUR_TS
-    fi
-
     DEVICES=$(get_devices)
     if [ -z "$DEVICES" ]; then
         # [V2.9.6] Offline Recovery: 아무 기기도 없거나 offline인 경우 adb reconnect 시도

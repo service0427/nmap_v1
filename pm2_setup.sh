@@ -38,7 +38,17 @@ else
     echo "[!] test_nmap_v2/run_scheduler.sh not found. Skipping."
 fi
 
-# 4. Save & Setup Startup
+# 4. Register Log Cleaner (Hourly Cron)
+if [ -f "log_clean.sh" ]; then
+    echo "[*] Registering Nmap Log Cleaner (Hourly Cron)..."
+    chmod +x log_clean.sh
+    pm2 delete nmap-log-cleaner 2>/dev/null
+    pm2 start log_clean.sh --name "nmap-log-cleaner" --cron "0 * * * *" --no-autorestart
+else
+    echo "[!] log_clean.sh not found. Skipping."
+fi
+
+# 5. Save & Setup Startup
 echo "[*] Finalizing PM2 configuration..."
 pm2 save
 pm2 startup | tail -n 1 | bash 2>/dev/null
