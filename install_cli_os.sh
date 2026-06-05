@@ -87,8 +87,8 @@ sudo apt install -y git screen adb curl wget build-essential cron net-tools nano
 # 6. Python 및 필수 라이브러리 설치
 echo "[*] Installing Python3 and required libraries..."
 sudo apt install -y python3 python3-pip python3-dev python3-venv
-sudo python3 -m pip install --upgrade pip --break-system-packages
-sudo python3 -m pip install blackboxprotobuf flask frida-tools mitmproxy requests --break-system-packages
+sudo python3 -m pip install --upgrade --ignore-installed pip --break-system-packages
+sudo python3 -m pip install --ignore-installed blackboxprotobuf flask frida-tools mitmproxy requests --break-system-packages
 
 # [V1.2] Frida & Mitmproxy PATH 안정화 (심볼릭 링크 강제 생성)
 # 최신 OS에서 externally-managed-environment 에러 대응 및 PATH 누락 방지
