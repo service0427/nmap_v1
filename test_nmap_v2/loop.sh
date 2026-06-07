@@ -138,6 +138,7 @@ while true; do
 
         # 4. EXECUTE V2 ENGINE
         DEBUG_LOG="${DEV_TMP_DIR}/main_debug.log"
+        SCRIPT_PATH="$(cd "$(dirname "$0")" && pwd)/lib/main.sh"
         NMAP_API_RESPONSE="$RESPONSE" \
         NMAP_LOG_ID="$LOG_ID" \
         NMAP_DEST_ID=$(echo "$RESPONSE" | jq -r '.destination.id') \
@@ -159,7 +160,7 @@ while true; do
         NMAP_ORIG_TOKEN=$(echo "$RESPONSE" | jq -r '.identity.original.token') \
         NMAP_FRIDA_PORT="$FRIDA_PORT" \
         NMAP_NO_IP="$SKIP_IP" \
-        setsid bash lib/main.sh "$DEV_ID" >> "$DEBUG_LOG" 2>&1 &
+        setsid bash "$SCRIPT_PATH" "$DEV_ID" >> "$DEBUG_LOG" 2>&1 &
         
         log_info "[$DEV_ID] Engine forked successfully."
         sleep 2
