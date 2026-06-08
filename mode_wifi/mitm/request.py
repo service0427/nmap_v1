@@ -18,6 +18,10 @@ for orig_key, spoof_key in pairs:
     o, s = os.environ.get(orig_key), os.environ.get(spoof_key)
     if o and s and len(o) > 3:
         IDENTITY_MAP[o] = s
+# [DEBUG] Check Identity Map
+print(f"[*] IDENTITY_MAP Loaded: {len(IDENTITY_MAP)} entries", flush=True)
+for k, v in IDENTITY_MAP.items():
+    print(f"    - Mapping: {k[:5]}... -> {v[:5]}...", flush=True)
 
 SESSION_STORAGE_OFFSET = random.randint(-500000000, 500000000)
 SESSION_BOOT_OFFSET_MS = random.randint(300000, 86400000)
@@ -37,7 +41,9 @@ def smart_cleanse(obj):
     elif isinstance(obj, list): return [smart_cleanse(i) for i in obj]
     elif isinstance(obj, str):
         for real, fake in IDENTITY_MAP.items():
-            if len(real) > 5 and real in obj: obj = obj.replace(real, fake)
+            if len(real) > 5 and real in obj:
+                obj = obj.replace(real, fake)
+                print(f"[🛡️ CLEANSE] Replaced {real[:4]}... with {fake[:4]}...", flush=True)
         return obj
     elif isinstance(obj, bytes):
         for real, fake in IDENTITY_MAP.items():
@@ -63,7 +69,7 @@ def jitter_location_dict(o):
         # 1. WiFi Data Array Cleanup (Object 4)
         for wk in [4, "4"]:
             if wk in o and isinstance(o[wk], list):
-                print(f"[📡 DEBUG] Object 4 (WiFi Array) detected. Items: {len(o[wk])}. Blanking...")
+                print(f"[📡 DEBUG] Object 4 (WiFi Array) detected. Items: {len(o[wk])}. Blanking...", flush=True)
                 o[wk] = []
 
         # 2. Aggressive Mutation for Speed/Bearing/Accuracy (5, 6, 7)
@@ -73,7 +79,7 @@ def jitter_location_dict(o):
             
             # [DEBUG] Detect Object 3 (Location List)
             if ks == "3" and isinstance(val, list):
-                print(f"[📍 DEBUG] Object 3 (Location Array) detected. Items: {len(val)}")
+                print(f"[📍 DEBUG] Object 3 (Location Array) detected. Items: {len(val)}", flush=True)
 
             # Target keys 5, 6, 7 only
             if ks in ["5", "6", "7", 5, 6, 7]:
@@ -82,7 +88,7 @@ def jitter_location_dict(o):
                     if str(val) in ["1065353216", "1.0", "0", "0.0"]:
                         new_val = int(random.randint(1080000000, 1150000000))
                         o[k] = new_val
-                        print(f"  [⚡ JITTER] Field {ks} matched value {val}. Randomized to: {new_val}")
+                        print(f"  [⚡ JITTER] Field {ks} matched value {val}. Randomized to: {new_val}", flush=True)
                 except:
                     pass
             

@@ -10,8 +10,7 @@ adb() {
 }
 export -f adb
 
-LIB_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-ROOT_DIR="$( cd "$LIB_DIR/.." && pwd )"; cd "$ROOT_DIR" || exit 1
+cd "$MODE_WIFI_ROOT" || exit 1
 
 DEV_ID=$1
 if [ -z "$DEV_ID" ]; then exit 1; fi
@@ -31,8 +30,16 @@ export NMAP_ID_SSAID NMAP_ID_ADID NMAP_ID_NI NMAP_ID_IDFV NMAP_ID_TOKEN
 # 1. Setup Logs
 DATE_STR=$(date +%Y%m%d); TIME_STR=$(date +%H%M%S)
 LOG_REL_PATH="logs/${DEV_ID}/${DATE_STR}/${TIME_STR}_${NMAP_DEST_ID}"
-mkdir -p "$LOG_REL_PATH"
-export CAPTURE_LOG_DIR="$(cd "$LOG_REL_PATH" && pwd)"
+export CAPTURE_LOG_DIR="${MODE_WIFI_LOGS}/${DEV_ID}/${DATE_STR}/${TIME_STR}_${NMAP_DEST_ID}"
+mkdir -p "$CAPTURE_LOG_DIR"
+
+# 기기별 격리된 tmp 폴더 경로 설정 및 생성 (하트비트 조기 시작)
+DEV_TMP_DIR="${MODE_WIFI_LOGS}/${DEV_ID}/tmp"
+mkdir -p "$DEV_TMP_DIR"
+LOCK_FILE="${DEV_TMP_DIR}/nmap_lock"
+
+( while true; do touch "$LOCK_FILE"; sleep 10; done ) &
+HEARTBEAT_PID=$!
 
 # Save Original API Response
 if [ -n "$NMAP_API_RESPONSE" ]; then
@@ -50,19 +57,11 @@ echo "------------------------------------------------------------"
 
 # 1.5 IP Change & REAL IP Verification
 if [ "$NMAP_NO_IP" != "true" ]; then
-    echo "[$DEV_ID] Skipping Airplane Mode toggle (LTE WiFi mode)..."
-    # adb -s "$DEV_ID" shell su -c "cmd connectivity airplane-mode enable"
-    # sleep 3
-    # adb -s "$DEV_ID" shell su -c "cmd connectivity airplane-mode disable"
-    echo -n "    > Waiting for stable network connection..."
-    
     REAL_IP="Unknown"
     CONNECTED=false
-    # 최대 30초 대기 (기존 15초에서 증설)
+    # 최대 30초 대기
     for i in {1..30}; do
-        # 1. 먼저 핑으로 기본 연결 확인
         if adb -s "$DEV_ID" shell "ping -c 1 -W 1 8.8.8.8" >/dev/null 2>&1; then
-            # 2. 실제 HTTP 요청이 성공하는지 확인 (SSL 핸드쉐이크 등 안정성 보장)
             REAL_IP=$(adb -s "$DEV_ID" shell "curl -4 -s --connect-timeout 3 https://ifconfig.me" | tr -d '\r\n')
             if [ -n "$REAL_IP" ] && [[ "$REAL_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
                 echo " [✓] Connected! Real IPv4: $REAL_IP"
@@ -76,41 +75,51 @@ if [ "$NMAP_NO_IP" != "true" ]; then
     
     if [ "$CONNECTED" = false ]; then
         echo " [🚨] Network verification FAILED. Terminating session."
-        curl -s -X POST "http://${API_SERVER:-localhost:5003}/api/v1/update_status" \
+        curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/update_status" \
              -H "Content-Type: application/json" \
-             -d "{\"log_id\": $NMAP_LOG_ID, \"status\": \"FAIL_NETWORK_TIMEOUT\", \"device_id\": \"$DEV_ID\"}" > /dev/null
+             -d "{\"task_id\": $NMAP_TASK_ID, \"status\": \"FAIL_NETWORK_TIMEOUT\", \"device_id\": \"$DEV_ID\", \"drive_dist\": 0, \"drive_time\": 0}" > /dev/null
         exit 1
     fi
 
     # Update Status to Server with Real IP
-    curl -s -X POST "http://${API_SERVER:-localhost:5003}/api/v1/update_status" \
+    curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/update_status" \
          -H "Content-Type: application/json" \
-         -d "{\"log_id\": $NMAP_LOG_ID, \"status\": \"IP_CHANGED\", \"device_id\": \"$DEV_ID\", \"real_ip\": \"$REAL_IP\"}" > /dev/null
+         -d "{\"task_id\": $NMAP_TASK_ID, \"status\": \"IP_CHANGED\", \"device_id\": \"$DEV_ID\", \"real_ip\": \"$REAL_IP\", \"drive_dist\": 0, \"drive_time\": 0}" > /dev/null
     export NMAP_REAL_IP="$REAL_IP"
-    # 연결 직후 앱이 실행되면 시스템 팝업(Wi-Fi 확인 등)과 충돌할 수 있으므로 추가 안정화 시간 부여
     sleep 2
 fi
 
 # 1.6 Initialize Session Summary
-echo "{\"log_id\": $NMAP_LOG_ID, \"device_id\": \"$DEV_ID\", \"real_ip\": \"$NMAP_REAL_IP\", \"task_start_time\": \"$(date +%Y-%m-%dT%H:%M:%S)\", \"status\": \"STARTED\"}" > "$CAPTURE_LOG_DIR/session_summary.json"
+echo "{\"task_id\": $NMAP_TASK_ID, \"device_id\": \"$DEV_ID\", \"real_ip\": \"$NMAP_REAL_IP\", \"task_start_time\": \"$(date +%Y-%m-%dT%H:%M:%S)\", \"status\": \"STARTED\"}" > "$CAPTURE_LOG_DIR/session_summary.json"
 
-# [NEW] Create Live Task Badge for Web Monitor
-CURRENT_TASK_JSON="${ROOT_DIR}/logs/${DEV_ID}/current_task.json"
+# [NEW] Create Live Task Badge for Web Monitor (즉시 할당 정보 반영)
+CURRENT_TASK_JSON="${MODE_WIFI_LOGS}/${DEV_ID}/current_task.json"
 jq -n \
-  --arg lid "$NMAP_LOG_ID" \
+  --arg lid "$NMAP_TASK_ID" \
   --arg dname "$NMAP_DEST_NAME" \
   --arg tmin "$NMAP_MIN_ARRIVAL" \
   --arg tmax "$NMAP_MAX_ARRIVAL" \
+  --arg dist "$NMAP_START_DIST" \
+  --arg speed "$NMAP_START_SPEED" \
+  --arg target_sec "$NMAP_MIN_ARRIVAL" \
   --arg sts "$(date +%s)" \
   --arg siso "$(date -Iseconds)" \
   --arg ip "$NMAP_REAL_IP" \
   --arg path "$LOG_REL_PATH" \
   --arg fport "$NMAP_FRIDA_PORT" \
   --arg mport "$NMAP_MITM_PORT" \
-  '{log_id: $lid, dest_name: $dname, target_range: ($tmin + "~" + $tmax), start_ts: ($sts|tonumber), start_iso: $siso, real_ip: $ip, session_path: $path, ports: {frida: $fport, mitm: $mport}}' \
+  '{task_id: $lid, dest_name: $dname, status: "INITIALIZING", target_range: ($tmin + "~" + $tmax), target_sec: ($target_sec|tonumber), total_dist_km: ($dist|tonumber / 1000), avg_speed_kmh: ($speed|tonumber), start_ts: ($sts|tonumber), start_iso: $siso, real_ip: $ip, session_path: $path, ports: {frida: $fport, mitm: $mport}}' \
   > "$CURRENT_TASK_JSON" 2>/dev/null
 
-# 2. Cleanup & IME Setup
+# 2. Cleanup, Screen Wakeup & Popup Clear
+echo "[$DEV_ID] Waking up screen and clearing system popups..."
+# 화면 켜기 (224) 및 잠금 해제 (82)
+adb -s "$DEV_ID" shell input keyevent 224
+adb -s "$DEV_ID" shell input keyevent 82
+# 혹시 모를 팝업(배터리, 시스템 알림)을 치우기 위해 뒤로가기(4) 후 홈(3)으로 이동
+adb -s "$DEV_ID" shell input keyevent 4
+adb -s "$DEV_ID" shell input keyevent 3
+
 adb -s "$DEV_ID" shell am force-stop $PKG_NAME
 adb -s "$DEV_ID" shell am force-stop $GPS_PKG
 adb -s "$DEV_ID" shell settings put global http_proxy :0 2>/dev/null
@@ -149,7 +158,9 @@ RELOAD_PID=$!
 echo "[$DEV_ID] Launching Optimized Session via Frida Spawn..."
 FRIDA_LOG="$CAPTURE_LOG_DIR/frida.log"
 adb -s "$DEV_ID" forward tcp:"$NMAP_FRIDA_PORT" tcp:27042 >/dev/null 2>&1
-./gps/static.sh "$DEV_ID" "$NMAP_DEST_LAT" "$NMAP_DEST_LNG"
+
+# [V3 STYLE] Start at API-provided location
+./gps/static.sh "$DEV_ID" "$NMAP_START_LAT" "$NMAP_START_LNG"
 
 nohup frida -H localhost:"$NMAP_FRIDA_PORT" --runtime=v8 -f "$PKG_NAME" \
     -l lib/hooks/network_hook.js \
@@ -157,21 +168,27 @@ nohup frida -H localhost:"$NMAP_FRIDA_PORT" --runtime=v8 -f "$PKG_NAME" \
     --no-auto-reload > "$FRIDA_LOG" 2>&1 &
 FRIDA_PID=$!
 
-# 기기별 격리된 tmp 폴더 경로 설정 및 생성
-DEV_TMP_DIR="${ROOT_DIR}/logs/${DEV_ID}/tmp"
-mkdir -p "$DEV_TMP_DIR"
-LOCK_FILE="${DEV_TMP_DIR}/nmap_lock"
-
-( while true; do touch "$LOCK_FILE"; sleep 10; done ) &
-HEARTBEAT_PID=$!
-
 sleep 6
 if ! adb -s "$DEV_ID" shell pidof "$PKG_NAME" >/dev/null 2>&1; then
     adb -s "$DEV_ID" shell monkey -p "$PKG_NAME" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
 fi
 
 cleanup() {
-    echo -e "\n[$DEV_ID] Cleaning up session..."
+    local REASON=$1
+    [ -z "$REASON" ] && REASON="Unknown Reason"
+    echo -e "\n[$DEV_ID] Cleaning up session. Reason: $REASON"
+    
+    # [V3 STYLE] Report Final Result
+    FINAL_STATUS="FAIL"
+    SUMMARY_PATH="$CAPTURE_LOG_DIR/session_summary.json"
+    if [ -f "$SUMMARY_PATH" ]; then
+        if grep -q "ARRIVED" "$SUMMARY_PATH"; then FINAL_STATUS="SUCCESS"; fi
+    fi
+    
+    curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/report_result" \
+         -H "Content-Type: application/json" \
+         -d "{\"task_id\": $NMAP_TASK_ID, \"device_id\": \"$DEV_ID\", \"status\": \"$FINAL_STATUS\", \"message\": \"Terminated: $REASON\"}" > /dev/null
+
     kill -9 $MITM_PID $FRIDA_PID $MONITOR_PID $RELOAD_PID $HEARTBEAT_PID 2>/dev/null
     adb -s "$DEV_ID" shell am force-stop $PKG_NAME
     adb -s "$DEV_ID" shell "su -c 'am stopservice $GPS_PKG/.servicex2484'" 2>/dev/null
@@ -184,12 +201,15 @@ cleanup() {
     echo "[$DEV_ID] Session terminated safely."
     exit 0
 }
-trap cleanup INT TERM
+trap "cleanup 'Interrupted by Signal'" INT TERM
 
 while true; do
     PID=$(adb -s "$DEV_ID" shell pidof "$PKG_NAME" 2>/dev/null)
-    [ -z "$PID" ] && echo "[$DEV_ID] App process missing. Terminating..." && cleanup
-    CURRENT_FOCUS=$(adb -s "$DEV_ID" shell "dumpsys activity activities | grep -E 'mResumedActivity|mCurrentFocus|topResumedActivity' | grep $PKG_NAME" 2>/dev/null)
-    [ -z "$CURRENT_FOCUS" ] && echo "[$DEV_ID] App moved to BACKGROUND. Terminating..." && cleanup
+    [ -z "$PID" ] && cleanup "App process missing (Crash or killed by OS)"
+    
+    if ! kill -0 $FRIDA_PID 2>/dev/null; then
+        cleanup "Frida disconnected or crashed"
+    fi
+
     sleep 5
 done

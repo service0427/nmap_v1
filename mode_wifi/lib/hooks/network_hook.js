@@ -140,6 +140,24 @@ function hook_safe_ssl_bypass() {
             };
         } catch (e) { }
 
+        // 5. HostnameVerifier Bypass (TrustMeAlready Logic)
+        try {
+            var HostnameVerifier = Java.use("javax.net.ssl.HostnameVerifier");
+            HostnameVerifier.verify.implementation = function (hostname, session) {
+                return true;
+            };
+        } catch (e) { }
+
+        
+        // 6. Disable QUIC (Force HTTP/2 or lower to ensure proxy interception)
+        try {
+            var CronetEngineBuilder = Java.use("org.chromium.net.impl.CronetEngineBuilderImpl");
+            CronetEngineBuilder.enableQuic.implementation = function (v) {
+                console.log("[⚡] Disabling QUIC for Cronet");
+                return this.enableQuic(false);
+            };
+        } catch (e) { }
+        
         console.log("[+] Safe SSL Bypasses applied to fix Validity & WebView issues");
     });
 }
