@@ -155,23 +155,41 @@ setsid python3 gps/auto_reloader.py "$CAPTURE_LOG_DIR" "$DEV_ID" >> "$EXEC_LOG" 
 RELOAD_PID=$!
 
 # 6. Launch & Frida
-echo "[$DEV_ID] Launching Optimized Session via Frida Spawn..."
+echo "[$DEV_ID] Launching Optimized Session via Frida Attach..."
 FRIDA_LOG="$CAPTURE_LOG_DIR/frida.log"
 adb -s "$DEV_ID" forward tcp:"$NMAP_FRIDA_PORT" tcp:27042 >/dev/null 2>&1
 
 # [V3 STYLE] Start at API-provided location
 ./gps/static.sh "$DEV_ID" "$NMAP_START_LAT" "$NMAP_START_LNG"
 
-nohup frida -H localhost:"$NMAP_FRIDA_PORT" --runtime=v8 -f "$PKG_NAME" \
+# Start the application first
+adb -s "$DEV_ID" shell monkey -p "$PKG_NAME" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
+
+# Poll for the PID of the app
+PID=""
+for i in {1..10}; do
+    PID=$(adb -s "$DEV_ID" shell pidof "$PKG_NAME" 2>/dev/null | tr -d '\r\n')
+    [ -n "$PID" ] && break
+    sleep 1
+done
+
+if [ -z "$PID" ]; then
+    adb -s "$DEV_ID" shell monkey -p "$PKG_NAME" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
+    sleep 3
+    PID=$(adb -s "$DEV_ID" shell pidof "$PKG_NAME" 2>/dev/null | tr -d '\r\n')
+fi
+
+if [ -z "$PID" ]; then
+    cleanup "App failed to launch"
+fi
+
+nohup frida -H localhost:"$NMAP_FRIDA_PORT" --runtime=v8 -p "$PID" \
     -l lib/hooks/network_hook.js \
     -l lib/hooks/_core_survival.js \
     --no-auto-reload > "$FRIDA_LOG" 2>&1 &
 FRIDA_PID=$!
 
-sleep 6
-if ! adb -s "$DEV_ID" shell pidof "$PKG_NAME" >/dev/null 2>&1; then
-    adb -s "$DEV_ID" shell monkey -p "$PKG_NAME" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
-fi
+sleep 3
 
 cleanup() {
     local REASON=$1

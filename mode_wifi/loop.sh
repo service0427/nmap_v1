@@ -132,7 +132,7 @@ while true; do
         fi
 
         # [NEW] Clear only our stale proxy settings before checking IP (only touch it if it matches our expected port)
-        DEV_SEQ=$(echo "$DEV_ID" | cksum | awk '{print $1 % 100}')
+        DEV_SEQ=$(echo "$DEV_ID" | cksum | awk '{print $1 % 1000}')
         EXP_FRIDA=$((6000 + DEV_SEQ))
         EXP_MITM=$((EXP_FRIDA + 10000))
         CUR_PROXY=$(timeout 5 /usr/bin/adb -s "$DEV_ID" shell "settings get global http_proxy" 2>/dev/null | tr -d '\r\n')
@@ -176,7 +176,7 @@ while true; do
         # Port Logic
         FRIDA_PORT=$(echo "$RESPONSE" | jq -r '.port // empty')
         if [ -z "$FRIDA_PORT" ]; then
-            DEV_SEQ=$(echo "$DEV_ID" | cksum | awk '{print $1 % 100}')
+            DEV_SEQ=$(echo "$DEV_ID" | cksum | awk '{print $1 % 1000}')
             FRIDA_PORT=$((6000 + DEV_SEQ))
         fi
         MITM_PORT=$((FRIDA_PORT + 10000))

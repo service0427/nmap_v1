@@ -140,17 +140,42 @@ if [ -n "$TARGET_ID" ]; then
     sleep 2
 fi
 
-# 7. Frida Spawn
+# 7. Frida Attach
 adb -s "$DEV_ID" forward tcp:$FRIDA_PORT tcp:27042 >/dev/null 2>&1
 FRIDA_LOG="$CAPTURE_LOG_DIR/frida.log"
-nohup frida -H 127.0.0.1:$FRIDA_PORT --runtime=v8 -f "$PKG_NAME" \
+
+# Start the application first
+echo -e "${YELLOW}[$ALIAS] Starting app via monkey...${NC}"
+adb -s "$DEV_ID" shell monkey -p "$PKG_NAME" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
+
+# Poll for the PID of the app
+PID=""
+for i in {1..10}; do
+    PID=$(adb -s "$DEV_ID" shell pidof "$PKG_NAME" 2>/dev/null | tr -d '\r\n')
+    [ -n "$PID" ] && break
+    sleep 1
+done
+
+if [ -z "$PID" ]; then
+    adb -s "$DEV_ID" shell monkey -p "$PKG_NAME" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
+    sleep 3
+    PID=$(adb -s "$DEV_ID" shell pidof "$PKG_NAME" 2>/dev/null | tr -d '\r\n')
+fi
+
+if [ -z "$PID" ]; then
+    echo -e "${RED}[$ALIAS] ERROR: App failed to launch.${NC}"
+    cleanup
+fi
+
+echo -e "${GREEN}[$ALIAS] App started with PID: $PID. Attaching Frida...${NC}"
+nohup frida -H 127.0.0.1:$FRIDA_PORT --runtime=v8 -p "$PID" \
     -l lib/hooks/survival_light.js \
     -l lib/hooks/network_hook.js \
     -l lib/hooks/data_collector.js \
     --no-auto-reload > "$FRIDA_LOG" 2>&1 &
 FRIDA_PID=$!
 
-(sleep 3; adb -s "$DEV_ID" shell monkey -p "$PKG_NAME" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1) &
+sleep 3
 
 echo -e "${GREEN}============================================================${NC}"
 echo -e " [✓] [$ALIAS] SYSTEM READY. Original Value Logging..."
