@@ -13,6 +13,13 @@ init_naver_map() {
 
     echo -e "\n[*] Checking Naver Map (com.nhn.android.nmap) status..."
 
+    # Check if package is installed
+    local is_installed=$(adb -s "$serial" shell "pm path com.nhn.android.nmap" 2>/dev/null | tr -d '\r')
+    if [ -z "$is_installed" ]; then
+        echo -e "    ${YELLOW}[⚠️] Naver Map is NOT installed. Skipping this module.${NC}"
+        return 0
+    fi
+
     local pref_file="/data/data/com.nhn.android.nmap/shared_prefs/com.nhn.android.nmap_preferences.xml"
     local is_initialized="NO"
 

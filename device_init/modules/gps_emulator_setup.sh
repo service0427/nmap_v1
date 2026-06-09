@@ -13,6 +13,13 @@ init_gps_emulator() {
 
     echo -e "\n[*] Checking GPS Emulator (com.rosteam.gpsemulator) options..."
 
+    # Check if package is installed
+    local is_installed=$(adb -s "$serial" shell "pm path com.rosteam.gpsemulator" 2>/dev/null | tr -d '\r')
+    if [ -z "$is_installed" ]; then
+        echo -e "    ${YELLOW}[⚠️] GPS Emulator is NOT installed. Skipping this module.${NC}"
+        return 0
+    fi
+
     # 1. Location Permissions Check & Grant
     local fine_loc=$(adb -s "$serial" shell "dumpsys package com.rosteam.gpsemulator" 2>/dev/null | grep "ACCESS_FINE_LOCATION" | grep "granted=true")
     if [ -z "$fine_loc" ]; then
