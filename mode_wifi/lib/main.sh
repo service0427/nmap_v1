@@ -192,7 +192,10 @@ cleanup() {
     kill -9 $MITM_PID $FRIDA_PID $MONITOR_PID $RELOAD_PID $HEARTBEAT_PID 2>/dev/null
     adb -s "$DEV_ID" shell am force-stop $PKG_NAME
     adb -s "$DEV_ID" shell "su -c 'am stopservice $GPS_PKG/.servicex2484'" 2>/dev/null
-    adb -s "$DEV_ID" shell settings put global http_proxy :0 2>/dev/null
+    local cur_proxy=$(adb -s "$DEV_ID" shell settings get global http_proxy 2>/dev/null | tr -d '\r\n')
+    if [[ "$cur_proxy" == *":"$NMAP_MITM_PORT ]]; then
+        adb -s "$DEV_ID" shell settings put global http_proxy :0 2>/dev/null
+    fi
     adb -s "$DEV_ID" reverse --remove tcp:"$NMAP_FRIDA_PORT" 2>/dev/null
     adb -s "$DEV_ID" reverse --remove tcp:"$NMAP_MITM_PORT" 2>/dev/null
     adb -s "$DEV_ID" forward --remove tcp:"$NMAP_FRIDA_PORT" 2>/dev/null
