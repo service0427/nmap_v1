@@ -137,14 +137,14 @@ for serial in $DEVICES; do
     init_gps_emulator "$serial" "$HAS_SU"
     init_naver_map "$serial" "$HAS_SU"         # Starts and closes Naver Map
     init_magisk_setup "$serial" "$HAS_SU"
-    local magisk_reboot_status=$?
+    magisk_reboot_status=$?
     
     # Run these at the very end to override/correct any volume/portrait changes caused by the apps
     init_sound "$serial" "$HAS_SU"
     init_screen_orientation "$serial" "$HAS_SU"
 
     # Apply MITM certificate recovery and reboot
-    local force_reboot_flag="false"
+    force_reboot_flag="false"
     if [ "$magisk_reboot_status" -eq 2 ]; then
         force_reboot_flag="true"
     fi

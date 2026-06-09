@@ -109,6 +109,8 @@ init_app_installation() {
     
     # 5.1 USB Stability: Set Persistent USB to ADB Only (No MTP)
     adb -s "$serial" shell "su -c 'setprop persist.sys.usb.config adb && setprop sys.usb.config adb && svc usb setFunctions adb'" 2>/dev/null
+    sleep 2
+    adb -s "$serial" wait-for-device
     
     # 5.2 Disable Bloatware & MTP packages
     adb -s "$serial" shell pm uninstall com.google.android.webview >/dev/null 2>&1
