@@ -30,7 +30,7 @@
    - USB 안정성을 위해 persistent USB를 ADB 전용으로 고정 (MTP 완전 차단).
    - 화면 자동 회전 차단(세로 고정) 및 OTA 자동 업데이트 비활성화.
 4. **Magisk & Zygisk 모듈 자동 설치 (`device_init/modules/magisk_setup.sh`)**: Zygisk 활성화 상태를 확인/수정하고, `/sdcard/Download/` 경로에 배치된 필수 모듈(`MagiskFrida`, `AlwaysTrustUserCerts`, `LSPosed`)을 수동 조작 없이 자동 설치합니다.
-5. **MITM 인증서 복구 및 재부팅 바이패스 (`mitm_recovery.sh`)**: 신뢰할 수 있는 사용자 인증서 모듈의 MD5 해시를 대조해 스크립트 교정 후 자동 재부팅을 유도하여 설치된 모듈을 완전히 적용시킵니다 (기기에 변경사항이 없는 경우 재부팅 단계를 건너뛰어 속도를 최적화합니다).
+5. **MITM 인증서 복구 및 재부팅 바이패스 (`device_init/modules/mitm_recovery.sh`)**: 신뢰할 수 있는 사용자 인증서 모듈의 MD5 해시를 대조해 스크립트 교정 후 자동 재부팅을 유도하여 설치된 모듈을 완전히 적용시킵니다 (기기에 변경사항이 없는 경우 재부팅 단계를 건너뛰어 속도를 최적화합니다).
 
 ---
 

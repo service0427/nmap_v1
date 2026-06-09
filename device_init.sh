@@ -18,6 +18,7 @@ source "$BASE_DIR/device_init/modules/screen_orientation.sh"
 source "$BASE_DIR/device_init/modules/gps_emulator_setup.sh"
 source "$BASE_DIR/device_init/modules/naver_map_setup.sh"
 source "$BASE_DIR/device_init/modules/app_installation.sh"
+source "$BASE_DIR/device_init/modules/mitm_recovery.sh"
 
 # Get target device from argument (optional)
 TARGET_DEVICE=$1
@@ -143,12 +144,11 @@ for serial in $DEVICES; do
     init_screen_orientation "$serial" "$HAS_SU"
 
     # Apply MITM certificate recovery and reboot
-    echo -e "\n[*] Running MITM certificate recovery & reboot..."
+    local force_reboot_flag="false"
     if [ "$magisk_reboot_status" -eq 2 ]; then
-        bash "$BASE_DIR/mitm_recovery.sh" "$serial" --force-reboot
-    else
-        bash "$BASE_DIR/mitm_recovery.sh" "$serial"
+        force_reboot_flag="true"
     fi
+    init_mitm_recovery "$serial" "$HAS_SU" "$force_reboot_flag"
 
     echo -e "${CYAN}------------------------------------------------------------${NC}\n"
 done
