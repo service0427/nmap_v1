@@ -131,6 +131,9 @@ while true; do
             continue
         fi
 
+        # [NEW] Clear any stale proxy settings before checking IP
+        timeout 5 /usr/bin/adb -s "$DEV_ID" shell "settings put global http_proxy :0" >/dev/null 2>&1
+
         # [NEW] Detect Real IP before requesting task (fallback to local/tmp/curl if system curl is missing)
         CUR_IP=$(timeout 10 /usr/bin/adb -s "$DEV_ID" shell "[ -x /data/local/tmp/curl ] && /data/local/tmp/curl -s -4 --connect-timeout 3 https://ifconfig.me || curl -s -4 --connect-timeout 3 https://ifconfig.me" 2>/dev/null | tr -d '\r\n')
         if [ -z "$CUR_IP" ] || [[ ! "$CUR_IP" =~ ^[0-9] ]]; then
