@@ -151,49 +151,66 @@ init_naver_map() {
     # Force stop to avoid setting override by cached memory of active app
     adb -s "$serial" shell "am force-stop com.nhn.android.nmap"
     
-    # Ensure preference files exist (touch them if not)
-    adb -s "$serial" shell "$has_su -c 'mkdir -p /data/data/com.nhn.android.nmap/shared_prefs'" 2>/dev/null
-    adb -s "$serial" shell "$has_su -c 'touch /data/data/com.nhn.android.nmap/shared_prefs/NativeNaviDefaults.xml'" 2>/dev/null
-    adb -s "$serial" shell "$has_su -c 'touch /data/data/com.nhn.android.nmap/shared_prefs/NaviSettingsInfo.xml'" 2>/dev/null
+    # Create the modification script to run on the device
+    cat << 'EOF' > /tmp/nmap_mute_$serial.sh
+#!/system/bin/sh
+DEFAULTS_FILE="/data/data/com.nhn.android.nmap/shared_prefs/NativeNaviDefaults.xml"
+SETTINGS_FILE="/data/data/com.nhn.android.nmap/shared_prefs/NaviSettingsInfo.xml"
 
-    # A. Disable Voice Guidance (NaviTtsTurnGuide=false) in NativeNaviDefaults.xml
-    local check_tts=$(adb -s "$serial" shell "$has_su -c \"grep -c 'name=\\\"NaviTtsTurnGuide\\\"' /data/data/com.nhn.android.nmap/shared_prefs/NativeNaviDefaults.xml\"" 2>/dev/null | tr -d '\r')
-    if [ "$check_tts" = "0" ] || [ -z "$check_tts" ]; then
-        adb -s "$serial" shell "$has_su -c \"sed -i 's|</map>|    <boolean name=\\\"NaviTtsTurnGuide\\\" value=\\\"false\\\" />\\\n</map>|' /data/data/com.nhn.android.nmap/shared_prefs/NativeNaviDefaults.xml\""
+# Ensure files exist
+touch "$DEFAULTS_FILE"
+touch "$SETTINGS_FILE"
+
+# A. Disable Voice Guidance in NativeNaviDefaults.xml
+if [ ! -s "$DEFAULTS_FILE" ] || ! grep -q "<map>" "$DEFAULTS_FILE"; then
+    echo '<?xml version="1.0" encoding="utf-8" standalone="yes" ?>' > "$DEFAULTS_FILE"
+    echo '<map>' >> "$DEFAULTS_FILE"
+    echo '    <boolean name="NaviTtsTurnGuide" value="false" />' >> "$DEFAULTS_FILE"
+    echo '</map>' >> "$DEFAULTS_FILE"
+else
+    if ! grep -q 'name="NaviTtsTurnGuide"' "$DEFAULTS_FILE"; then
+        sed -i 's|</map>|    <boolean name="NaviTtsTurnGuide" value="false" />\n</map>|' "$DEFAULTS_FILE"
     else
-        adb -s "$serial" shell "$has_su -c \"sed -i 's|<boolean name=\\\"NaviTtsTurnGuide\\\" value=\\\"[a-zA-Z]*\\\"|<boolean name=\\\"NaviTtsTurnGuide\\\" value=\\\"false\\\"|' /data/data/com.nhn.android.nmap/shared_prefs/NativeNaviDefaults.xml\""
+        sed -i 's|<boolean name="NaviTtsTurnGuide" value="[a-zA-Z]*"|<boolean name="NaviTtsTurnGuide" value="false"|' "$DEFAULTS_FILE"
     fi
+fi
 
-    # B. Set Mute volumes (PREF_NAVI_EFFECT_VOLUME=0, PREF_NAVI_VOLUME=0) in NaviSettingsInfo.xml
-    local navi_settings_size=$(adb -s "$serial" shell "$has_su -c 'stat -c %s /data/data/com.nhn.android.nmap/shared_prefs/NaviSettingsInfo.xml'" 2>/dev/null | tr -d '\r')
-    if [ -z "$navi_settings_size" ] || [ "$navi_settings_size" = "0" ]; then
-        # Write default minimal XML
-        adb -s "$serial" shell "$has_su -c \"echo -e '<?xml version=\\\'1.0\\\' encoding=\\\'utf-8\\\' standalone=\\\'yes\\\' ?>\\\n<map>\\\n    <int name=\\\"PREF_NAVI_EFFECT_VOLUME\\\" value=\\\"0\\\" />\\\n    <int name=\\\"PREF_NAVI_VOLUME\\\" value=\\\"0\\\" />\\\n</map>' > /data/data/com.nhn.android.nmap/shared_prefs/NaviSettingsInfo.xml\""
+# B. Set Mute volumes in NaviSettingsInfo.xml
+if [ ! -s "$SETTINGS_FILE" ] || ! grep -q "<map>" "$SETTINGS_FILE"; then
+    echo '<?xml version="1.0" encoding="utf-8" standalone="yes" ?>' > "$SETTINGS_FILE"
+    echo '<map>' >> "$SETTINGS_FILE"
+    echo '    <int name="PREF_NAVI_EFFECT_VOLUME" value="0" />' >> "$SETTINGS_FILE"
+    echo '    <int name="PREF_NAVI_VOLUME" value="0" />' >> "$SETTINGS_FILE"
+    echo '</map>' >> "$SETTINGS_FILE"
+else
+    if ! grep -q 'name="PREF_NAVI_EFFECT_VOLUME"' "$SETTINGS_FILE"; then
+        sed -i 's|</map>|    <int name="PREF_NAVI_EFFECT_VOLUME" value="0" />\n</map>|' "$SETTINGS_FILE"
     else
-        # Check if PREF_NAVI_EFFECT_VOLUME exists
-        local check_effect=$(adb -s "$serial" shell "$has_su -c \"grep -c 'name=\\\"PREF_NAVI_EFFECT_VOLUME\\\"' /data/data/com.nhn.android.nmap/shared_prefs/NaviSettingsInfo.xml\"" 2>/dev/null | tr -d '\r')
-        if [ "$check_effect" = "0" ] || [ -z "$check_effect" ]; then
-            adb -s "$serial" shell "$has_su -c \"sed -i 's|</map>|    <int name=\\\"PREF_NAVI_EFFECT_VOLUME\\\" value=\\\"0\\\" />\\\n</map>|' /data/data/com.nhn.android.nmap/shared_prefs/NaviSettingsInfo.xml\""
-        else
-            adb -s "$serial" shell "$has_su -c \"sed -i 's|<int name=\\\"PREF_NAVI_EFFECT_VOLUME\\\" value=\\\"[0-9]*\\\"|<int name=\\\"PREF_NAVI_EFFECT_VOLUME\\\" value=\\\"0\\\"|' /data/data/com.nhn.android.nmap/shared_prefs/NaviSettingsInfo.xml\""
-        fi
-
-        # Check if PREF_NAVI_VOLUME exists
-        local check_volume=$(adb -s "$serial" shell "$has_su -c \"grep -c 'name=\\\"PREF_NAVI_VOLUME\\\"' /data/data/com.nhn.android.nmap/shared_prefs/NaviSettingsInfo.xml\"" 2>/dev/null | tr -d '\r')
-        if [ "$check_volume" = "0" ] || [ -z "$check_volume" ]; then
-            adb -s "$serial" shell "$has_su -c \"sed -i 's|</map>|    <int name=\\\"PREF_NAVI_VOLUME\\\" value=\\\"0\\\" />\\\n</map>|' /data/data/com.nhn.android.nmap/shared_prefs/NaviSettingsInfo.xml\""
-        else
-            adb -s "$serial" shell "$has_su -c \"sed -i 's|<int name=\\\"PREF_NAVI_VOLUME\\\" value=\\\"[0-9]*\\\"|<int name=\\\"PREF_NAVI_VOLUME\\\" value=\\\"0\\\"|' /data/data/com.nhn.android.nmap/shared_prefs/NaviSettingsInfo.xml\""
-        fi
+        sed -i 's|<int name="PREF_NAVI_EFFECT_VOLUME" value="[0-9]*"|<int name="PREF_NAVI_EFFECT_VOLUME" value="0"|' "$SETTINGS_FILE"
     fi
+    
+    if ! grep -q 'name="PREF_NAVI_VOLUME"' "$SETTINGS_FILE"; then
+        sed -i 's|</map>|    <int name="PREF_NAVI_VOLUME" value="0" />\n</map>|' "$SETTINGS_FILE"
+    else
+        sed -i 's|<int name="PREF_NAVI_VOLUME" value="[0-9]*"|<int name="PREF_NAVI_VOLUME" value="0"|' "$SETTINGS_FILE"
+    fi
+fi
+EOF
+
+    # Push and execute the helper script
+    adb -s "$serial" push /tmp/nmap_mute_$serial.sh /data/local/tmp/nmap_mute.sh >/dev/null 2>&1
+    adb -s "$serial" shell "$has_su -c 'sh /data/local/tmp/nmap_mute.sh'"
+    adb -s "$serial" shell "$has_su -c 'rm -f /data/local/tmp/nmap_mute.sh'"
+    rm -f /tmp/nmap_mute_$serial.sh
 
     # C. Restore permissions & labels
     adb -s "$serial" shell "su -c 'chown -R $app_uid:$app_uid /data/data/com.nhn.android.nmap/shared_prefs/ && chmod -R 777 /data/data/com.nhn.android.nmap/shared_prefs/ && restorecon -R /data/data/com.nhn.android.nmap'" >/dev/null 2>&1
     
-    # Verification checks
-    local v_tts=$(adb -s "$serial" shell "$has_su -c \"grep 'name=\\\"NaviTtsTurnGuide\\\"' /data/data/com.nhn.android.nmap/shared_prefs/NativeNaviDefaults.xml\"" 2>/dev/null | tr -d '\r')
-    local v_effect=$(adb -s "$serial" shell "$has_su -c \"grep 'name=\\\"PREF_NAVI_EFFECT_VOLUME\\\"' /data/data/com.nhn.android.nmap/shared_prefs/NaviSettingsInfo.xml\"" 2>/dev/null | tr -d '\r')
-    local v_vol=$(adb -s "$serial" shell "$has_su -c \"grep 'name=\\\"PREF_NAVI_VOLUME\\\"' /data/data/com.nhn.android.nmap/shared_prefs/NaviSettingsInfo.xml\"" 2>/dev/null | tr -d '\r')
+    # Verification checks (Perform cat on device and grep on host for safety and simplicity)
+    local v_tts=$(adb -s "$serial" shell "$has_su -c 'cat /data/data/com.nhn.android.nmap/shared_prefs/NativeNaviDefaults.xml'" 2>/dev/null | grep 'name="NaviTtsTurnGuide"' | tr -d '\r')
+    local v_effect=$(adb -s "$serial" shell "$has_su -c 'cat /data/data/com.nhn.android.nmap/shared_prefs/NaviSettingsInfo.xml'" 2>/dev/null | grep 'name="PREF_NAVI_EFFECT_VOLUME"' | tr -d '\r')
+    local v_vol=$(adb -s "$serial" shell "$has_su -c 'cat /data/data/com.nhn.android.nmap/shared_prefs/NaviSettingsInfo.xml'" 2>/dev/null | grep 'name="PREF_NAVI_VOLUME"' | tr -d '\r')
+
 
     if [[ "$v_tts" == *"value=\"false\""* ]] && [[ "$v_effect" == *"value=\"0\""* ]] && [[ "$v_vol" == *"value=\"0\""* ]]; then
         echo -e "    [✓] Naver Map internal mute configured successfully (Voice & Effect volumes set to 0)."
