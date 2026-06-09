@@ -84,6 +84,22 @@ class RouteDecoder:
                 except Exception: pass
         return []
 
+def get_su_cmd(device_id):
+    try:
+        res = subprocess.run(["adb", "-s", device_id, "shell", "which su"], capture_output=True, text=True).stdout.strip()
+        if res and "not found" not in res:
+            return res
+    except:
+        pass
+    for path in ["/system/bin/su", "/system/xbin/su", "/sbin/su"]:
+        try:
+            res = subprocess.run(["adb", "-s", device_id, "shell", f"ls {path}"], capture_output=True, text=True).stdout.strip()
+            if res and "No such" not in res:
+                return path
+        except:
+            pass
+    return "su"
+
 def run_reload(packet_file, device_id):
     if not os.path.exists(packet_file): return
     with open(packet_file, "r", encoding="utf-8") as f:
@@ -130,10 +146,12 @@ def run_reload(packet_file, device_id):
         
         subprocess.run(["adb", "-s", device_id, "shell", "am", "force-stop", pkg], check=True)
         subprocess.run(["adb", "-s", device_id, "push", local_xml, android_tmp], check=True, capture_output=True)
-        subprocess.run(["adb", "-s", device_id, "shell", f"su -c 'cp {android_tmp} {prefs_path} && chown $(stat -c %u:%g /data/data/{pkg}) {prefs_path} && chmod 660 {prefs_path} && rm {android_tmp}'"], check=True)
+        
+        su_cmd = get_su_cmd(device_id)
+        subprocess.run(["adb", "-s", device_id, "shell", f"{su_cmd} -c 'cp {android_tmp} {prefs_path} && chown $(stat -c %u:%g /data/data/{pkg}) {prefs_path} && chmod 660 {prefs_path} && rm {android_tmp}'"], check=True)
         
         speed_mps = round(final_kmh / 3.6, 6)
-        subprocess.run(["adb", "-s", device_id, "shell", "su -c", f"am start-foreground-service -n {pkg}/.servicex2484 -a ACTION_START_CONTINUOUS --es uy.digitools.RUTA 'ruta0' --ef velocidad {speed_mps} --ei loopMode 0"], check=True)
+        subprocess.run(["adb", "-s", device_id, "shell", su_cmd, "-c", f"am start-foreground-service -n {pkg}/.servicex2484 -a ACTION_START_CONTINUOUS --es uy.digitools.RUTA 'ruta0' --ef velocidad {speed_mps} --ei loopMode 0"], check=True)
 
         log_id = os.environ.get("NMAP_LOG_ID")
         if log_id:

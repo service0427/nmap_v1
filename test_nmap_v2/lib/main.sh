@@ -192,7 +192,12 @@ cleanup() {
     echo -e "\n[$DEV_ID] Cleaning up session..."
     kill -9 $MITM_PID $FRIDA_PID $MONITOR_PID $RELOAD_PID $HEARTBEAT_PID 2>/dev/null
     adb -s "$DEV_ID" shell am force-stop $PKG_NAME
-    adb -s "$DEV_ID" shell "su -c 'am stopservice $GPS_PKG/.servicex2484'" 2>/dev/null
+    local su_path=$(adb -s "$DEV_ID" shell "which su" 2>/dev/null | tr -d '\r')
+    if [ -z "$su_path" ]; then
+        su_path=$(adb -s "$DEV_ID" shell "ls /system/bin/su /system/xbin/su /sbin/su 2>/dev/null" | head -1 | tr -d '\r')
+    fi
+    [ -z "$su_path" ] && su_path="su"
+    adb -s "$DEV_ID" shell "$su_path -c 'am stopservice $GPS_PKG/.servicex2484'" 2>/dev/null
     local cur_proxy=$(adb -s "$DEV_ID" shell settings get global http_proxy 2>/dev/null | tr -d '\r\n')
     if [[ "$cur_proxy" == *":"$NMAP_MITM_PORT ]]; then
         adb -s "$DEV_ID" shell settings put global http_proxy :0 2>/dev/null

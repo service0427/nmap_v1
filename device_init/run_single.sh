@@ -119,7 +119,12 @@ adb -s "$DEV_ID" shell settings put global http_proxy :0 2>/dev/null
 pkill -f "mitmdump.*$MITM_PORT" 2>/dev/null
 
 if [ "$RESET_MODE" = true ]; then
-    adb -s "$DEV_ID" shell su -c "find /data/data/$PKG_NAME -mindepth 1 -maxdepth 1 ! -name 'lib' -exec rm -rf {} +"
+    HAS_SU=$(adb -s "$DEV_ID" shell "which su" 2>/dev/null | tr -d '\r')
+    if [ -z "$HAS_SU" ]; then
+        HAS_SU=$(adb -s "$DEV_ID" shell "ls /system/bin/su /system/xbin/su /sbin/su 2>/dev/null" | head -1 | tr -d '\r')
+    fi
+    [ -z "$HAS_SU" ] && HAS_SU="su"
+    adb -s "$DEV_ID" shell "$HAS_SU -c \"find /data/data/$PKG_NAME -mindepth 1 -maxdepth 1 ! -name 'lib' -exec rm -rf {} +\""
 fi
 
 # 5. MITM Network proxy

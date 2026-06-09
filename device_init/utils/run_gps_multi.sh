@@ -62,15 +62,22 @@ echo "[-] Injecting data to device..."
 PREFS_NAME="${PKG_NAME}_preferences.xml"
 PREFS_PATH="/data/data/$PKG_NAME/shared_prefs/$PREFS_NAME"
 
+# Find su path
+has_su=$(adb -s "$DEVICE_ID" shell "which su" 2>/dev/null | tr -d '\r')
+if [ -z "$has_su" ]; then
+    has_su=$(adb -s "$DEVICE_ID" shell "ls /system/bin/su /system/xbin/su /sbin/su 2>/dev/null" | head -1 | tr -d '\r')
+fi
+[ -z "$has_su" ] && has_su="su"
+
 adb -s "$DEVICE_ID" push "$LOCAL_TMP" "/data/local/tmp/$PREFS_NAME" >/dev/null 2>&1
-adb -s "$DEVICE_ID" shell "su -c 'chmod 660 $PREFS_PATH 2>/dev/null; cp /data/local/tmp/$PREFS_NAME $PREFS_PATH && chown \$(stat -c %u:%g /data/data/$PKG_NAME) $PREFS_PATH && chmod 440 $PREFS_PATH'"
+adb -s "$DEVICE_ID" shell "$has_su -c 'chmod 660 $PREFS_PATH 2>/dev/null; cp /data/local/tmp/$PREFS_NAME $PREFS_PATH && chown \$(stat -c %u:%g /data/data/$PKG_NAME) $PREFS_PATH && chmod 440 $PREFS_PATH'"
 
 rm -f "$LOCAL_TMP"
 rm -f "$ROUTE_PATH"
 
 echo "[-] Auto-Starting GPS Engine (Headless Intent)..."
 SPEED_MPS=$(python3 -c "print(round($REQUIRED_SPEED / 3.6, 6))")
-adb -s "$DEVICE_ID" shell su -c "am start-foreground-service -n $PKG_NAME/.servicex2484 -a ACTION_START_CONTINUOUS --es uy.digitools.RUTA 'ruta0' --ef velocidad $SPEED_MPS --ei loopMode 0"
+adb -s "$DEVICE_ID" shell "$has_su -c \"am start-foreground-service -n $PKG_NAME/.servicex2484 -a ACTION_START_CONTINUOUS --es uy.digitools.RUTA 'ruta0' --ef velocidad $SPEED_MPS --ei loopMode 0\""
 sleep 2
 
 echo "============================================================"

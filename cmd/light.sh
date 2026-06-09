@@ -28,7 +28,8 @@ for serial in $devices; do
     adb -s "$serial" shell settings put global animator_duration_scale 1
 
     # 4. Disable Do Not Disturb (Zen Mode 0)
-    adb -s "$serial" shell settings put global zen_mode 0 >/dev/null 2>&1 || true
+    adb -s "$serial" shell cmd notification set_dnd off >/dev/null 2>&1 || true
+    adb -s "$serial" shell settings put system all_sound_off 0 >/dev/null 2>&1 || true
 done
 
 echo "Done. All devices are now in normal/light mode."

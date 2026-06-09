@@ -121,8 +121,11 @@ for serial in $devices; do
         # Check root authorization with a non-blocking timeout
         has_su=false
         has_su_cmd=$(adb -s "$serial" shell "which su" 2>/dev/null | tr -d '\r')
+        if [ -z "$has_su_cmd" ]; then
+            has_su_cmd=$(adb -s "$serial" shell "ls /system/bin/su /system/xbin/su /sbin/su 2>/dev/null" | head -1 | tr -d '\r')
+        fi
         if [ -n "$has_su_cmd" ]; then
-            su_test=$(timeout 3 adb -s "$serial" shell "su -c 'id'" 2>/dev/null | tr -d '\r')
+            su_test=$(timeout 3 adb -s "$serial" shell "$has_su_cmd -c 'id'" 2>/dev/null | tr -d '\r')
             if [[ "$su_test" == *"uid=0"* ]]; then
                 has_su=true
             fi
@@ -146,7 +149,7 @@ for serial in $devices; do
             
             # Connect to new network (needs root su execution for connect-network)
             echo "[$serial] Connecting to '$chosen_ssid'..."
-            adb -s "$serial" shell "su -c 'cmd wifi connect-network \"$chosen_ssid\" wpa2 13241324'" >/dev/null 2>&1
+            adb -s "$serial" shell "$has_su_cmd -c 'cmd wifi connect-network \"$chosen_ssid\" wpa2 13241324'" >/dev/null 2>&1
         else
             echo -e "\e[1;31m[$serial] [⚠️] Root (su) permission check failed or pending. Skipping connection switch.\e[0m"
         fi

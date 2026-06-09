@@ -211,7 +211,11 @@ EOF
     rm -f /tmp/nmap_mute_$serial.sh
 
     # C. Restore permissions & labels
-    adb -s "$serial" shell "su -c 'chown -R $app_uid:$app_uid /data/data/com.nhn.android.nmap/shared_prefs/ && chmod -R 777 /data/data/com.nhn.android.nmap/shared_prefs/ && restorecon -R /data/data/com.nhn.android.nmap'" >/dev/null 2>&1
+    local su_cmd="su"
+    if [ -n "$has_su" ]; then
+        su_cmd="$has_su"
+    fi
+    adb -s "$serial" shell "$su_cmd -c 'chown -R $app_uid:$app_uid /data/data/com.nhn.android.nmap/shared_prefs/ && chmod -R 777 /data/data/com.nhn.android.nmap/shared_prefs/ && restorecon -R /data/data/com.nhn.android.nmap'" >/dev/null 2>&1
     
     # Verification checks (Perform cat on device and grep on host for safety and simplicity)
     local v_tts=$(adb -s "$serial" shell "$has_su -c 'cat /data/data/com.nhn.android.nmap/shared_prefs/NativeNaviDefaults.xml'" 2>/dev/null | grep 'name="NaviTtsTurnGuide"' | tr -d '\r')

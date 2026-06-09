@@ -38,11 +38,20 @@ init_sound() {
         echo -e "    - Current status: Ringer=$ringer_mode, AllSoundsOff=$all_sound_off_val, MediaVolume=$music_vol"
         echo -e "    - Silencing device and muting all audio streams..."
         
+        local su_cmd="su"
+        if [ -n "$has_su" ]; then
+            su_cmd="$has_su"
+        fi
+        adb -s "$serial" shell "$su_cmd -c 'cmd notification allow_dnd com.android.shell'" >/dev/null 2>&1 || true
+        adb -s "$serial" shell "$su_cmd -c 'cmd notification set_dnd none'" >/dev/null 2>&1 || true
+        adb -s "$serial" shell "settings put system all_sound_off 1"
         adb -s "$serial" shell "settings put system mode_ringer 0"
         adb -s "$serial" shell "settings put global mode_ringer 0"
-        adb -s "$serial" shell "settings put system all_sound_off 1"
-        adb -s "$serial" shell "cmd audio set-ringer-mode silent"
-        adb -s "$serial" shell "am broadcast -a com.samsung.android.intent.action.SOUND_MODE --ei mode 2" >/dev/null 2>&1
+        # Additional database volume overrides
+        adb -s "$serial" shell "settings put system volume_ring 0" >/dev/null 2>&1
+        adb -s "$serial" shell "settings put system volume_system 0" >/dev/null 2>&1
+        adb -s "$serial" shell "settings put system volume_notification 0" >/dev/null 2>&1
+        adb -s "$serial" shell "settings put system volume_music 0" >/dev/null 2>&1
         
         # Mute all streams (0 to 15) using cmd media_session
         for i in {0..15}; do

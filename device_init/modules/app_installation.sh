@@ -106,8 +106,11 @@ init_app_installation() {
     # 5. System Tweak & MTP Lockout
     echo -e "    - Applying System Tweaks & USB/MTP Lockout..."
     
-    # 5.1 USB Stability: Set Persistent USB to ADB Only (No MTP)
-    adb -s "$serial" shell "su -c 'setprop persist.sys.usb.config adb && setprop sys.usb.config adb && svc usb setFunctions adb'" 2>/dev/null
+    local su_cmd="su"
+    if [ -n "$has_su" ]; then
+        su_cmd="$has_su"
+    fi
+    adb -s "$serial" shell "$su_cmd -c 'setprop persist.sys.usb.config adb && setprop sys.usb.config adb && svc usb setFunctions adb'" 2>/dev/null
     sleep 2
     adb -s "$serial" wait-for-device
     

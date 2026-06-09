@@ -38,7 +38,12 @@ declare -A STATE_FLAGS
 
 stop_gps() {
     echo "[$(NOW)] [🛑] Stopping GPS Movement (Speed: 0.0m/s)"
-    adb -s "$DEV_ID" shell su -c "am start-foreground-service -n $GPS_PKG/.servicex2484 -a ACTION_START_CONTINUOUS --ef velocidad 0.0" > /dev/null 2>&1
+    local su_path=$(adb -s "$DEV_ID" shell "which su" 2>/dev/null | tr -d '\r')
+    if [ -z "$su_path" ]; then
+        su_path=$(adb -s "$DEV_ID" shell "ls /system/bin/su /system/xbin/su /sbin/su 2>/dev/null" | head -1 | tr -d '\r')
+    fi
+    [ -z "$su_path" ] && su_path="su"
+    adb -s "$DEV_ID" shell "$su_path -c 'am start-foreground-service -n $GPS_PKG/.servicex2484 -a ACTION_START_CONTINUOUS --ef velocidad 0.0'" > /dev/null 2>&1
 }
 
 check_app_survival() {

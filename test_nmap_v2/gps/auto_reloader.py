@@ -28,6 +28,22 @@ def get_latest_driving_packet(log_dir):
         return files[0]
     except: return None
 
+def get_su_cmd(device_id):
+    try:
+        res = subprocess.run(["adb", "-s", device_id, "shell", "which su"], capture_output=True, text=True).stdout.strip()
+        if res and "not found" not in res:
+            return res
+    except:
+        pass
+    for path in ["/system/bin/su", "/system/xbin/su", "/sbin/su"]:
+        try:
+            res = subprocess.run(["adb", "-s", device_id, "shell", f"ls {path}"], capture_output=True, text=True).stdout.strip()
+            if res and "No such" not in res:
+                return path
+        except:
+            pass
+    return "su"
+
 def get_current_mock_location(device_id):
     cmd = ["adb", "-s", device_id, "shell", "dumpsys location | grep -E 'last location=Location\\[.* [0-9]{2}\\.[0-9]+,[0-9]{3}\\.[0-9]+' | head -n 1"]
     res = subprocess.run(cmd, capture_output=True, text=True).stdout.strip()
@@ -47,7 +63,8 @@ def get_current_mock_location(device_id):
 def set_simulator_speed(device_id, kmh):
     speed_mps = round(kmh / 3.6, 6)
     pkg = "com.rosteam.gpsemulator"
-    cmd = ["adb", "-s", device_id, "shell", "su -c", 
+    su_cmd = get_su_cmd(device_id)
+    cmd = ["adb", "-s", device_id, "shell", su_cmd, "-c", 
            f"am start-foreground-service -n {pkg}/.servicex2484 -a ACTION_START_CONTINUOUS --es uy.digitools.RUTA 'ruta0' --ef velocidad {speed_mps} --ei loopMode 0"]
     subprocess.run(cmd, capture_output=True)
     log_print(f"[*] [🚀] Speed Adjusted: {kmh} km/h")
@@ -73,8 +90,9 @@ def move_gps_to_target(device_id, target_lat, target_lng):
     prefs_path = f"/data/data/{pkg}/shared_prefs/{pkg}_preferences.xml"
     subprocess.run(["adb", "-s", device_id, "shell", "am", "force-stop", pkg], capture_output=True)
     subprocess.run(["adb", "-s", device_id, "push", local_xml, "/data/local/tmp/force_gps.xml"], capture_output=True)
-    subprocess.run(["adb", "-s", device_id, "shell", f"su -c 'cp /data/local/tmp/force_gps.xml {prefs_path} && chown $(stat -c %u:%g /data/data/{pkg}) {prefs_path} && chmod 660 {prefs_path} && rm /data/local/tmp/force_gps.xml'"], shell=True)
-    cmd = ["adb", "-s", device_id, "shell", "su -c", 
+    su_cmd = get_su_cmd(device_id)
+    subprocess.run(["adb", "-s", device_id, "shell", f"{su_cmd} -c 'cp /data/local/tmp/force_gps.xml {prefs_path} && chown $(stat -c %u:%g /data/data/{pkg}) {prefs_path} && chmod 660 {prefs_path} && rm /data/local/tmp/force_gps.xml'"], shell=True)
+    cmd = ["adb", "-s", device_id, "shell", su_cmd, "-c", 
            f"am start-foreground-service -n {pkg}/.servicex2484 -a ACTION_START_CONTINUOUS --es uy.digitools.RUTA 'ruta0' --ef velocidad 0.0 --ei loopMode 1"]
     subprocess.run(cmd, capture_output=True)
     if os.path.exists(local_xml): os.remove(local_xml)
