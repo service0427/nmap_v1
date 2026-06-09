@@ -132,6 +132,7 @@ for serial in $DEVICES; do
     init_gps_emulator "$serial" "$HAS_SU"
     init_naver_map "$serial" "$HAS_SU"         # Starts and closes Naver Map
     init_magisk_setup "$serial" "$HAS_SU"
+    local magisk_reboot_status=$?
     
     # Run these at the very end to override/correct any volume/portrait changes caused by the apps
     init_sound "$serial" "$HAS_SU"
@@ -139,7 +140,11 @@ for serial in $DEVICES; do
 
     # Apply MITM certificate recovery and reboot
     echo -e "\n[*] Running MITM certificate recovery & reboot..."
-    bash "$BASE_DIR/mitm_recovery.sh" "$serial"
+    if [ "$magisk_reboot_status" -eq 2 ]; then
+        bash "$BASE_DIR/mitm_recovery.sh" "$serial" --force-reboot
+    else
+        bash "$BASE_DIR/mitm_recovery.sh" "$serial"
+    fi
 
     echo -e "${CYAN}------------------------------------------------------------${NC}\n"
 done

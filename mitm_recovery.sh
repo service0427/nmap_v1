@@ -51,9 +51,17 @@ else
     exit 1
 fi
 
-TARGET_DEVICE=$1
+TARGET_DEVICE=""
+FORCE_REBOOT=false
+for arg in "$@"; do
+    if [ "$arg" == "--force-reboot" ]; then
+        FORCE_REBOOT=true
+    else
+        TARGET_DEVICE="$arg"
+    fi
+done
 
-if [ -z "$TARGET_DEVICE" ]; then
+if [ -z "$TARGET_DEVICE" ] || [ "$TARGET_DEVICE" = "--force-reboot" ]; then
     echo "[*] 대상 기기가 지정되지 않았습니다. 연결된 전체 기기를 대상으로 복구를 시작합니다."
     DEVICES=$(adb devices | grep -w "device" | awk '{print $1}')
 else
@@ -108,7 +116,7 @@ for serial in $DEVICES; do
         fi
     fi
 
-    if [ "$USER_MD5" = "$HOST_MD5" ] && [ "$MODULE_CERT_MATCH" = true ] && [ "$SCRIPT_CORRECT" = true ]; then
+    if [ "$FORCE_REBOOT" = false ] && [ "$USER_MD5" = "$HOST_MD5" ] && [ "$MODULE_CERT_MATCH" = true ] && [ "$SCRIPT_CORRECT" = true ]; then
         echo "[$serial] [✓] MITM 인증서와 Magisk 스크립트가 이미 최신 상태로 적용되어 있습니다. 복구 및 재부팅을 건너뜁니다."
         echo "=================================================="
         continue

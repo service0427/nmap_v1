@@ -86,5 +86,7 @@ init_magisk_setup() {
     # Reboot warning
     if [ "$reboot_required" = true ]; then
         echo -e "\n${YELLOW}[!] Magisk configuration changes were made. PLEASE REBOOT the device to apply.${NC}"
+        return 2
     fi
+    return 0
 }
