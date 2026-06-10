@@ -177,7 +177,7 @@ while true; do
         fi
 
         # [NEW] Detect Real IP before requesting task (using native ping resolution and static curl HTTP resolve bypass)
-        local resolved_ip=$(timeout 10 /usr/bin/adb -s "$DEV_ID" shell "ping -c 1 -W 2 ifconfig.me | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'" 2>/dev/null | tr -d '\r\n')
+        resolved_ip=$(timeout 10 /usr/bin/adb -s "$DEV_ID" shell "ping -c 1 -W 2 ifconfig.me | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'" 2>/dev/null | tr -d '\r\n')
         CUR_IP=""
         if [ -n "$resolved_ip" ]; then
             CUR_IP=$(timeout 10 /usr/bin/adb -s "$DEV_ID" shell "[ -x /data/local/tmp/curl ] && /data/local/tmp/curl -s -4 --connect-timeout 3 --resolve ifconfig.me:80:$resolved_ip http://ifconfig.me || curl -s -4 --connect-timeout 3 --resolve ifconfig.me:80:$resolved_ip http://ifconfig.me" 2>/dev/null | tr -d '\r\n')
@@ -200,7 +200,7 @@ while true; do
             
             # Recheck IP after toggle
             sleep 5
-            local resolved_ip2=$(timeout 10 /usr/bin/adb -s "$DEV_ID" shell "ping -c 1 -W 2 ifconfig.me | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'" 2>/dev/null | tr -d '\r\n')
+            resolved_ip2=$(timeout 10 /usr/bin/adb -s "$DEV_ID" shell "ping -c 1 -W 2 ifconfig.me | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'" 2>/dev/null | tr -d '\r\n')
             CUR_IP=""
             if [ -n "$resolved_ip2" ]; then
                 CUR_IP=$(timeout 10 /usr/bin/adb -s "$DEV_ID" shell "[ -x /data/local/tmp/curl ] && /data/local/tmp/curl -s -4 --connect-timeout 3 --resolve ifconfig.me:80:$resolved_ip2 http://ifconfig.me || curl -s -4 --connect-timeout 3 --resolve ifconfig.me:80:$resolved_ip2 http://ifconfig.me" 2>/dev/null | tr -d '\r\n')
