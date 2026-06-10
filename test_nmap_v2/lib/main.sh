@@ -16,6 +16,10 @@ ROOT_DIR="$( cd "$LIB_DIR/.." && pwd )"; cd "$ROOT_DIR" || exit 1
 DEV_ID=$1
 if [ -z "$DEV_ID" ]; then exit 1; fi
 
+DEV_TMP_DIR="${ROOT_DIR}/logs/${DEV_ID}/tmp"
+LOCK_FILE="${DEV_TMP_DIR}/nmap_lock"
+CURRENT_TASK_JSON="${ROOT_DIR}/logs/${DEV_ID}/current_task.json"
+
 RESET_MODE=true; AGREE_MODE=true
 PKG_NAME="com.nhn.android.nmap"; GPS_PKG="com.rosteam.gpsemulator"
 
@@ -33,6 +37,31 @@ DATE_STR=$(date +%Y%m%d); TIME_STR=$(date +%H%M%S)
 LOG_REL_PATH="logs/${DEV_ID}/${DATE_STR}/${TIME_STR}_${NMAP_DEST_ID}"
 mkdir -p "$LOG_REL_PATH"
 export CAPTURE_LOG_DIR="$(cd "$LOG_REL_PATH" && pwd)"
+
+# Define cleanup function early to ensure it can be called safely anytime
+cleanup() {
+    echo -e "\n[$DEV_ID] Cleaning up session..."
+    kill -9 $MITM_PID $FRIDA_PID $MONITOR_PID $RELOAD_PID $HEARTBEAT_PID 2>/dev/null
+    adb -s "$DEV_ID" shell am force-stop $PKG_NAME
+    local su_path=$(adb -s "$DEV_ID" shell "which su" 2>/dev/null | tr -d '\r')
+    if [ -z "$su_path" ]; then
+        su_path=$(adb -s "$DEV_ID" shell "ls /system/bin/su /system/xbin/su /sbin/su 2>/dev/null" | head -1 | tr -d '\r')
+    fi
+    [ -z "$su_path" ] && su_path="su"
+    adb -s "$DEV_ID" shell "$su_path -c 'am stopservice $GPS_PKG/.servicex2484'" 2>/dev/null
+    local cur_proxy=$(adb -s "$DEV_ID" shell settings get global http_proxy 2>/dev/null | tr -d '\r\n')
+    if [[ "$cur_proxy" == *":"$NMAP_MITM_PORT ]]; then
+        adb -s "$DEV_ID" shell settings put global http_proxy :0 2>/dev/null
+    fi
+    adb -s "$DEV_ID" reverse --remove tcp:"$NMAP_FRIDA_PORT" 2>/dev/null
+    adb -s "$DEV_ID" reverse --remove tcp:"$NMAP_MITM_PORT" 2>/dev/null
+    adb -s "$DEV_ID" forward --remove tcp:"$NMAP_FRIDA_PORT" 2>/dev/null
+    rm -f "$LOCK_FILE"
+    rm -f "$CURRENT_TASK_JSON"
+    echo "[$DEV_ID] Session terminated safely."
+    exit 0
+}
+trap cleanup INT TERM
 
 # Save Original API Response
 if [ -n "$NMAP_API_RESPONSE" ]; then
@@ -62,12 +91,15 @@ if [ "$NMAP_NO_IP" != "true" ]; then
     for i in {1..30}; do
         # 1. 먼저 핑으로 기본 연결 확인
         if adb -s "$DEV_ID" shell "ping -c 1 -W 1 8.8.8.8" >/dev/null 2>&1; then
-            # 2. 실제 HTTP 요청이 성공하는지 확인 (SSL 핸드쉐이크 등 안정성 보장, local/tmp/curl 폴백 지원)
-            REAL_IP=$(adb -s "$DEV_ID" shell "[ -x /data/local/tmp/curl ] && /data/local/tmp/curl -4 -s --connect-timeout 3 https://ifconfig.me || curl -4 -s --connect-timeout 3 https://ifconfig.me" | tr -d '\r\n')
-            if [ -n "$REAL_IP" ] && [[ "$REAL_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                echo " [✓] Connected! Real IPv4: $REAL_IP"
-                CONNECTED=true
-                break
+            # 2. 실제 HTTP 요청이 성공하는지 확인 (static curl DNS & SSL CA 우회 지원)
+            local resolved_ip=$(adb -s "$DEV_ID" shell "ping -c 1 -W 2 ifconfig.me | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'" | tr -d '\r\n')
+            if [ -n "$resolved_ip" ]; then
+                REAL_IP=$(adb -s "$DEV_ID" shell "[ -x /data/local/tmp/curl ] && /data/local/tmp/curl -4 -s --connect-timeout 3 --resolve ifconfig.me:80:$resolved_ip http://ifconfig.me || curl -4 -s --connect-timeout 3 --resolve ifconfig.me:80:$resolved_ip http://ifconfig.me" | tr -d '\r\n')
+                if [ -n "$REAL_IP" ] && [[ "$REAL_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    echo " [✓] Connected! Real IPv4: $REAL_IP"
+                    CONNECTED=true
+                    break
+                fi
             fi
         fi
         echo -n "."
@@ -178,39 +210,13 @@ nohup frida -H localhost:"$NMAP_FRIDA_PORT" --runtime=v8 -p "$PID" \
     --no-auto-reload > "$FRIDA_LOG" 2>&1 &
 FRIDA_PID=$!
 
-# 기기별 격리된 tmp 폴더 경로 설정 및 생성
-DEV_TMP_DIR="${ROOT_DIR}/logs/${DEV_ID}/tmp"
+# 기기별 격리된 tmp 폴더 경로 설정 및 생성 (이미 상단에서 정의됨)
 mkdir -p "$DEV_TMP_DIR"
-LOCK_FILE="${DEV_TMP_DIR}/nmap_lock"
 
 ( while true; do touch "$LOCK_FILE"; sleep 10; done ) &
 HEARTBEAT_PID=$!
 
 sleep 3
-
-cleanup() {
-    echo -e "\n[$DEV_ID] Cleaning up session..."
-    kill -9 $MITM_PID $FRIDA_PID $MONITOR_PID $RELOAD_PID $HEARTBEAT_PID 2>/dev/null
-    adb -s "$DEV_ID" shell am force-stop $PKG_NAME
-    local su_path=$(adb -s "$DEV_ID" shell "which su" 2>/dev/null | tr -d '\r')
-    if [ -z "$su_path" ]; then
-        su_path=$(adb -s "$DEV_ID" shell "ls /system/bin/su /system/xbin/su /sbin/su 2>/dev/null" | head -1 | tr -d '\r')
-    fi
-    [ -z "$su_path" ] && su_path="su"
-    adb -s "$DEV_ID" shell "$su_path -c 'am stopservice $GPS_PKG/.servicex2484'" 2>/dev/null
-    local cur_proxy=$(adb -s "$DEV_ID" shell settings get global http_proxy 2>/dev/null | tr -d '\r\n')
-    if [[ "$cur_proxy" == *":"$NMAP_MITM_PORT ]]; then
-        adb -s "$DEV_ID" shell settings put global http_proxy :0 2>/dev/null
-    fi
-    adb -s "$DEV_ID" reverse --remove tcp:"$NMAP_FRIDA_PORT" 2>/dev/null
-    adb -s "$DEV_ID" reverse --remove tcp:"$NMAP_MITM_PORT" 2>/dev/null
-    adb -s "$DEV_ID" forward --remove tcp:"$NMAP_FRIDA_PORT" 2>/dev/null
-    rm -f "$LOCK_FILE"
-    rm -f "$CURRENT_TASK_JSON"
-    echo "[$DEV_ID] Session terminated safely."
-    exit 0
-}
-trap cleanup INT TERM
 
 while true; do
     PID=$(adb -s "$DEV_ID" shell pidof "$PKG_NAME" 2>/dev/null)

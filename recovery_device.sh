@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+
+# ============================================================
+# Naver Map Auto-Simulation Infrastructure (V2)
+# Device BoringSSL Curl Recovery Script
+# ============================================================
+
+TARGET_DEVICE=$1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CURL_BIN="$SCRIPT_DIR/install/curl-aarch64"
+
+if [ ! -f "$CURL_BIN" ]; then
+    echo "[-] Error: Local BoringSSL curl binary not found at $CURL_BIN"
+    exit 1
+fi
+
+# Get connected devices
+if [ -z "$TARGET_DEVICE" ]; then
+    echo "[*] No target device specified. Checking all connected devices..."
+    DEVICES=$(adb devices | grep -w "device" | awk '{print $1}')
+else
+    echo "[*] Targeting specific device: $TARGET_DEVICE"
+    DEVICES=$TARGET_DEVICE
+fi
+
+if [ -z "$DEVICES" ]; then
+    echo "[-] No devices connected."
+    exit 1
+fi
+
+GREEN="\e[1;32m"
+YELLOW="\e[1;33m"
+RED="\e[1;31m"
+NC="\e[0m"
+
+for serial in $DEVICES; do
+    echo "--------------------------------------------------"
+    echo -e "Checking/Restoring BoringSSL curl on device: ${GREEN}$serial${NC}"
+    
+    # 0. Check if BoringSSL curl is already active and working
+    has_device_curl=$(adb -s "$serial" shell "which curl" 2>/dev/null | tr -d '\r')
+    is_boring="NO"
+    if [ -n "$has_device_curl" ]; then
+        is_boring=$(adb -s "$serial" shell "curl --version 2>/dev/null" | grep -q "BoringSSL" && echo "YES" || echo "NO")
+    fi
+    
+    if [ "$is_boring" = "YES" ]; then
+        test_ip=$(adb -s "$serial" shell "curl -s -4 --connect-timeout 3 https://ifconfig.me" 2>/dev/null | tr -d '\r\n')
+        if [[ "$test_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            # Clean up residual resolv.conf files if any exist on an already working device
+            adb -s "$serial" shell "su -c 'rm -f /system/etc/resolv.conf /etc/resolv.conf'" >/dev/null 2>&1
+            echo -e "  ${GREEN}[✓] Device already has fully functional BoringSSL curl. Skipping.${NC}"
+            continue
+        fi
+    fi
+
+    # 1. Find su
+    HAS_SU=$(adb -s "$serial" shell "which su" 2>/dev/null | tr -d '\r')
+    if [ -z "$HAS_SU" ]; then
+        HAS_SU=$(adb -s "$serial" shell "ls /system/bin/su /system/xbin/su /sbin/su 2>/dev/null" | head -1 | tr -d '\r')
+    fi
+    
+    if [ -z "$HAS_SU" ]; then
+        echo -e "  ${RED}[!] Root (su) not found. Cannot overwrite system curl.${NC}"
+        continue
+    fi
+    
+    # 2. Push and deploy native BoringSSL curl
+    echo "  - Pushing BoringSSL curl to /data/local/tmp/curl..."
+    adb -s "$serial" push "$CURL_BIN" /data/local/tmp/curl >/dev/null 2>&1
+    
+    echo "  - Remounting system and deploying curl to /system/bin/curl..."
+    # 2.1 Unmount Zygisk file-level overlay (if active)
+    adb -s "$serial" shell "$HAS_SU -c 'umount /system/bin/curl'" >/dev/null 2>&1
+    
+    # 2.2 Remount /, /system, and /system/bin (Zygisk tmpfs overlay) as read-write
+    adb -s "$serial" shell "$HAS_SU -c 'mount -o rw,remount / 2>/dev/null || mount -o rw,remount /system 2>/dev/null; mount -o rw,remount /system/bin 2>/dev/null'" >/dev/null 2>&1
+    
+    # 2.3 Copy binary, set permission, clean up temporary resolv.conf and local tmp curl
+    adb -s "$serial" shell "$HAS_SU -c 'cp /data/local/tmp/curl /system/bin/curl && chmod 755 /system/bin/curl; rm -f /system/etc/resolv.conf; rm -f /etc/resolv.conf; rm -f /data/local/tmp/curl'" >/dev/null 2>&1
+    
+    # 3. Verify native BoringSSL curl via HTTPS
+    echo "  - Verifying HTTPS connection (without -k)..."
+    TEST_IP=$(adb -s "$serial" shell "curl -s -4 --connect-timeout 5 https://ifconfig.me" | tr -d '\r\n')
+    
+    if [[ "$TEST_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo -e "  ${GREEN}[✓] Recovery SUCCESS! Real IP detected: $TEST_IP${NC}"
+    else
+        # Try fallback check using -k in case it's a proxy issue
+        TEST_IP_K=$(adb -s "$serial" shell "curl -k -s -4 --connect-timeout 5 https://ifconfig.me" | tr -d '\r\n')
+        if [[ "$TEST_IP_K" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo -e "  ${YELLOW}[⚠️] curl works with -k, but standard HTTPS failed. Output: $TEST_IP_K${NC}"
+        else
+            echo -e "  ${RED}[!] Verification FAILED. Output: $TEST_IP${NC}"
+        fi
+    fi
+done
+
+echo "--------------------------------------------------"
+echo -e "${GREEN}[✓] BoringSSL Curl Recovery complete.${NC}"

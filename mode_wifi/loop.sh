@@ -176,8 +176,12 @@ while true; do
             timeout 5 /usr/bin/adb -s "$DEV_ID" shell "settings put global http_proxy :0" >/dev/null 2>&1
         fi
 
-        # [NEW] Detect Real IP before requesting task (fallback to local/tmp/curl if system curl is missing)
-        CUR_IP=$(timeout 10 /usr/bin/adb -s "$DEV_ID" shell "[ -x /data/local/tmp/curl ] && /data/local/tmp/curl -s -4 --connect-timeout 3 https://ifconfig.me || curl -s -4 --connect-timeout 3 https://ifconfig.me" 2>/dev/null | tr -d '\r\n')
+        # [NEW] Detect Real IP before requesting task (using native ping resolution and static curl HTTP resolve bypass)
+        local resolved_ip=$(timeout 10 /usr/bin/adb -s "$DEV_ID" shell "ping -c 1 -W 2 ifconfig.me | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'" 2>/dev/null | tr -d '\r\n')
+        CUR_IP=""
+        if [ -n "$resolved_ip" ]; then
+            CUR_IP=$(timeout 10 /usr/bin/adb -s "$DEV_ID" shell "[ -x /data/local/tmp/curl ] && /data/local/tmp/curl -s -4 --connect-timeout 3 --resolve ifconfig.me:80:$resolved_ip http://ifconfig.me || curl -s -4 --connect-timeout 3 --resolve ifconfig.me:80:$resolved_ip http://ifconfig.me" 2>/dev/null | tr -d '\r\n')
+        fi
         if [ -z "$CUR_IP" ] || [[ ! "$CUR_IP" =~ ^[0-9] ]]; then
             log_info "[$DEV_ID] Network unstable (No IP). Attempting to auto-toggle LTE network..."
             
@@ -196,7 +200,11 @@ while true; do
             
             # Recheck IP after toggle
             sleep 5
-            CUR_IP=$(timeout 10 /usr/bin/adb -s "$DEV_ID" shell "[ -x /data/local/tmp/curl ] && /data/local/tmp/curl -s -4 --connect-timeout 3 https://ifconfig.me || curl -s -4 --connect-timeout 3 https://ifconfig.me" 2>/dev/null | tr -d '\r\n')
+            local resolved_ip2=$(timeout 10 /usr/bin/adb -s "$DEV_ID" shell "ping -c 1 -W 2 ifconfig.me | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'" 2>/dev/null | tr -d '\r\n')
+            CUR_IP=""
+            if [ -n "$resolved_ip2" ]; then
+                CUR_IP=$(timeout 10 /usr/bin/adb -s "$DEV_ID" shell "[ -x /data/local/tmp/curl ] && /data/local/tmp/curl -s -4 --connect-timeout 3 --resolve ifconfig.me:80:$resolved_ip2 http://ifconfig.me || curl -s -4 --connect-timeout 3 --resolve ifconfig.me:80:$resolved_ip2 http://ifconfig.me" 2>/dev/null | tr -d '\r\n')
+            fi
             if [ -z "$CUR_IP" ] || [[ ! "$CUR_IP" =~ ^[0-9] ]]; then
                 log_info "[$DEV_ID] Network still unstable (No IP) after toggle. Skipping..."
                 continue

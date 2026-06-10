@@ -23,30 +23,53 @@ init_app_installation() {
         "com.android.adbkeyboard:0:$INSTALL_DIR/ADBKeyboard.apk"
     )
 
-    # 1. Download Static Curl if not exists on the host
+    # 1. Check Android-native BoringSSL Curl on the host
     local CURL_BIN="$INSTALL_DIR/curl-aarch64"
     if [ ! -f "$CURL_BIN" ]; then
-        echo -e "    - Downloading statically compiled curl for aarch64..."
-        mkdir -p "$INSTALL_DIR"
-        curl -sL "https://github.com/moparisthebest/static-curl/releases/download/v8.11.0/curl-aarch64" -o "$CURL_BIN"
-        chmod +x "$CURL_BIN"
+        echo -e "    - [!] Error: BoringSSL curl binary not found at $CURL_BIN"
+        echo -e "          Please run download_install_assets.sh or place the BoringSSL curl-aarch64 binary manually."
+        exit 1
     fi
 
     echo -e "\n[*] Provisioning applications and base configuration..."
 
     # 2. Curl Check & Installation on the device
     local has_device_curl=$(adb -s "$serial" shell "which curl" 2>/dev/null | tr -d '\r')
+    local is_boring="NO"
+    if [ -n "$has_device_curl" ]; then
+        is_boring=$(adb -s "$serial" shell "curl --version 2>/dev/null" | grep -q "BoringSSL" && echo "YES" || echo "NO")
+    fi
+
+    local curl_ok="NO"
+    if [ "$is_boring" = "YES" ]; then
+        local test_ip=$(adb -s "$serial" shell "curl -s -4 --connect-timeout 3 https://ifconfig.me" 2>/dev/null | tr -d '\r\n')
+        if [[ "$test_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            curl_ok="YES"
+        fi
+    fi
     
     # Always ensure static curl is deployed to /data/local/tmp/curl as a reliable fallback
     echo -e "    - Deploying static 'curl' to /data/local/tmp/curl..."
     adb -s "$serial" push "$CURL_BIN" /data/local/tmp/curl >/dev/null 2>&1
     adb -s "$serial" shell "chmod 755 /data/local/tmp/curl"
     
-    # Try system path installation as best effort
+    # Try system path installation as best effort (if missing or not BoringSSL)
     if [ -n "$has_su" ]; then
-        adb -s "$serial" shell "$has_su -c 'mount -o rw,remount / 2>/dev/null || mount -o rw,remount /system 2>/dev/null'" >/dev/null 2>&1
-        adb -s "$serial" shell "$has_su -c 'cp /data/local/tmp/curl /system/bin/curl 2>/dev/null || cp /data/local/tmp/curl /system/xbin/curl 2>/dev/null'" >/dev/null 2>&1
-        adb -s "$serial" shell "$has_su -c 'chmod 755 /system/bin/curl 2>/dev/null || chmod 755 /system/xbin/curl 2>/dev/null'" >/dev/null 2>&1
+        if [ "$curl_ok" = "NO" ]; then
+            echo -e "    - Installing BoringSSL curl to system paths..."
+            # Unmount Zygisk file-level overlay (if active)
+            adb -s "$serial" shell "$has_su -c 'umount /system/bin/curl'" >/dev/null 2>&1
+            # Remount /system and /system/bin as rw
+            adb -s "$serial" shell "$has_su -c 'mount -o rw,remount / 2>/dev/null || mount -o rw,remount /system 2>/dev/null; mount -o rw,remount /system/bin 2>/dev/null'" >/dev/null 2>&1
+            # Copy to system and clean up legacy resolv.conf
+            adb -s "$serial" shell "$has_su -c 'cp /data/local/tmp/curl /system/bin/curl 2>/dev/null || cp /data/local/tmp/curl /system/xbin/curl 2>/dev/null'" >/dev/null 2>&1
+            adb -s "$serial" shell "$has_su -c 'chmod 755 /system/bin/curl 2>/dev/null || chmod 755 /system/xbin/curl 2>/dev/null'" >/dev/null 2>&1
+            adb -s "$serial" shell "$has_su -c 'rm -f /system/etc/resolv.conf /etc/resolv.conf'" >/dev/null 2>&1
+        else
+            echo -e "    - System curl already works with BoringSSL. Skipping system install."
+            # Clean up residual resolv.conf files if any exist on an already working device
+            adb -s "$serial" shell "$has_su -c 'rm -f /system/etc/resolv.conf /etc/resolv.conf'" >/dev/null 2>&1
+        fi
     fi
 
     # Final verification

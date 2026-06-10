@@ -41,6 +41,44 @@ LOCK_FILE="${DEV_TMP_DIR}/nmap_lock"
 ( while true; do touch "$LOCK_FILE"; sleep 10; done ) &
 HEARTBEAT_PID=$!
 
+cleanup() {
+    local REASON=$1
+    [ -z "$REASON" ] && REASON="Unknown Reason"
+    echo -e "\n[$DEV_ID] Cleaning up session. Reason: $REASON"
+    
+    # [V3 STYLE] Report Final Result
+    local FINAL_STATUS="FAIL"
+    local SUMMARY_PATH="$CAPTURE_LOG_DIR/session_summary.json"
+    if [ -f "$SUMMARY_PATH" ]; then
+        if grep -q "ARRIVED" "$SUMMARY_PATH"; then FINAL_STATUS="SUCCESS"; fi
+    fi
+    
+    curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/report_result" \
+         -H "Content-Type: application/json" \
+         -d "{\"task_id\": $NMAP_TASK_ID, \"device_id\": \"$DEV_ID\", \"status\": \"$FINAL_STATUS\", \"message\": \"Terminated: $REASON\"}" > /dev/null
+
+    kill -9 $MITM_PID $FRIDA_PID $MONITOR_PID $RELOAD_PID $HEARTBEAT_PID 2>/dev/null
+    adb -s "$DEV_ID" shell am force-stop $PKG_NAME
+    local su_path=$(adb -s "$DEV_ID" shell "which su" 2>/dev/null | tr -d '\r')
+    if [ -z "$su_path" ]; then
+        su_path=$(adb -s "$DEV_ID" shell "ls /system/bin/su /system/xbin/su /sbin/su 2>/dev/null" | head -1 | tr -d '\r')
+    fi
+    [ -z "$su_path" ] && su_path="su"
+    adb -s "$DEV_ID" shell "$su_path -c 'am stopservice $GPS_PKG/.servicex2484'" 2>/dev/null
+    local cur_proxy=$(adb -s "$DEV_ID" shell settings get global http_proxy 2>/dev/null | tr -d '\r\n')
+    if [[ "$cur_proxy" == *":"$NMAP_MITM_PORT ]]; then
+        adb -s "$DEV_ID" shell settings put global http_proxy :0 2>/dev/null
+    fi
+    adb -s "$DEV_ID" reverse --remove tcp:"$NMAP_FRIDA_PORT" 2>/dev/null
+    adb -s "$DEV_ID" reverse --remove tcp:"$NMAP_MITM_PORT" 2>/dev/null
+    adb -s "$DEV_ID" forward --remove tcp:"$NMAP_FRIDA_PORT" 2>/dev/null
+    rm -f "$LOCK_FILE"
+    rm -f "$CURRENT_TASK_JSON"
+    echo "[$DEV_ID] Session terminated safely."
+    exit 0
+}
+trap "cleanup 'Interrupted by Signal'" INT TERM
+
 # Save Original API Response
 if [ -n "$NMAP_API_RESPONSE" ]; then
     echo "$NMAP_API_RESPONSE" | jq '.' > "$CAPTURE_LOG_DIR/api_response.json" 2>/dev/null
@@ -62,11 +100,15 @@ if [ "$NMAP_NO_IP" != "true" ]; then
     # 최대 30초 대기
     for i in {1..30}; do
         if adb -s "$DEV_ID" shell "ping -c 1 -W 1 8.8.8.8" >/dev/null 2>&1; then
-            REAL_IP=$(adb -s "$DEV_ID" shell "[ -x /data/local/tmp/curl ] && /data/local/tmp/curl -4 -s --connect-timeout 3 https://ifconfig.me || curl -4 -s --connect-timeout 3 https://ifconfig.me" | tr -d '\r\n')
-            if [ -n "$REAL_IP" ] && [[ "$REAL_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                echo " [✓] Connected! Real IPv4: $REAL_IP"
-                CONNECTED=true
-                break
+            # 실제 HTTP 요청이 성공하는지 확인 (static curl DNS & SSL CA 우회 지원)
+            local resolved_ip=$(adb -s "$DEV_ID" shell "ping -c 1 -W 2 ifconfig.me | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'" | tr -d '\r\n')
+            if [ -n "$resolved_ip" ]; then
+                REAL_IP=$(adb -s "$DEV_ID" shell "[ -x /data/local/tmp/curl ] && /data/local/tmp/curl -4 -s --connect-timeout 3 --resolve ifconfig.me:80:$resolved_ip http://ifconfig.me || curl -4 -s --connect-timeout 3 --resolve ifconfig.me:80:$resolved_ip http://ifconfig.me" | tr -d '\r\n')
+                if [ -n "$REAL_IP" ] && [[ "$REAL_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    echo " [✓] Connected! Real IPv4: $REAL_IP"
+                    CONNECTED=true
+                    break
+                fi
             fi
         fi
         echo -n "."
@@ -191,43 +233,7 @@ FRIDA_PID=$!
 
 sleep 3
 
-cleanup() {
-    local REASON=$1
-    [ -z "$REASON" ] && REASON="Unknown Reason"
-    echo -e "\n[$DEV_ID] Cleaning up session. Reason: $REASON"
-    
-    # [V3 STYLE] Report Final Result
-    FINAL_STATUS="FAIL"
-    SUMMARY_PATH="$CAPTURE_LOG_DIR/session_summary.json"
-    if [ -f "$SUMMARY_PATH" ]; then
-        if grep -q "ARRIVED" "$SUMMARY_PATH"; then FINAL_STATUS="SUCCESS"; fi
-    fi
-    
-    curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/report_result" \
-         -H "Content-Type: application/json" \
-         -d "{\"task_id\": $NMAP_TASK_ID, \"device_id\": \"$DEV_ID\", \"status\": \"$FINAL_STATUS\", \"message\": \"Terminated: $REASON\"}" > /dev/null
-
-    kill -9 $MITM_PID $FRIDA_PID $MONITOR_PID $RELOAD_PID $HEARTBEAT_PID 2>/dev/null
-    adb -s "$DEV_ID" shell am force-stop $PKG_NAME
-    local su_path=$(adb -s "$DEV_ID" shell "which su" 2>/dev/null | tr -d '\r')
-    if [ -z "$su_path" ]; then
-        su_path=$(adb -s "$DEV_ID" shell "ls /system/bin/su /system/xbin/su /sbin/su 2>/dev/null" | head -1 | tr -d '\r')
-    fi
-    [ -z "$su_path" ] && su_path="su"
-    adb -s "$DEV_ID" shell "$su_path -c 'am stopservice $GPS_PKG/.servicex2484'" 2>/dev/null
-    local cur_proxy=$(adb -s "$DEV_ID" shell settings get global http_proxy 2>/dev/null | tr -d '\r\n')
-    if [[ "$cur_proxy" == *":"$NMAP_MITM_PORT ]]; then
-        adb -s "$DEV_ID" shell settings put global http_proxy :0 2>/dev/null
-    fi
-    adb -s "$DEV_ID" reverse --remove tcp:"$NMAP_FRIDA_PORT" 2>/dev/null
-    adb -s "$DEV_ID" reverse --remove tcp:"$NMAP_MITM_PORT" 2>/dev/null
-    adb -s "$DEV_ID" forward --remove tcp:"$NMAP_FRIDA_PORT" 2>/dev/null
-    rm -f "$LOCK_FILE"
-    rm -f "$CURRENT_TASK_JSON"
-    echo "[$DEV_ID] Session terminated safely."
-    exit 0
-}
-trap "cleanup 'Interrupted by Signal'" INT TERM
+# Trap is already configured at the top
 
 while true; do
     PID=$(adb -s "$DEV_ID" shell pidof "$PKG_NAME" 2>/dev/null)

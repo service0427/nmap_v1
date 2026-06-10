@@ -6,7 +6,7 @@
 # ============================================================
 
 # ⚠️ 구글 드라이브에 업로드한 install.tar.gz 파일의 고유 File ID를 입력해주세요.
-GDRIVE_FILE_ID="14Iz0TJag2WGPaQOC2J8hcSmnmkGy3E2I"
+GDRIVE_FILE_ID="1_JSzUHkj5FY1W04odxKou1Tc5mVIuuiL"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_DIR="$(dirname "$SCRIPT_DIR")"
