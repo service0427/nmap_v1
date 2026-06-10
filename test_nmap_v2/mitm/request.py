@@ -226,10 +226,16 @@ def handle_request(addon, flow: http.HTTPFlow):
             
             elif "nlogapp" in path_lower or "nelo" in path_lower or "nelo" in host.lower() or is_json:
                 try:
-                    body_json = json.loads(flow.request.content.decode('utf-8', 'ignore'))
+                    raw = flow.request.content
+                    is_gz = raw.startswith(b'\x1f\x8b')
+                    if is_gz:
+                        raw = gzip.decompress(raw)
+                    body_json = json.loads(raw.decode('utf-8', 'ignore'))
                     body_json = smart_cleanse(body_json)
                     wash_network_env(body_json)
-                    flow.request.content = json.dumps(body_json).encode('utf-8')
+                    
+                    work = json.dumps(body_json).encode('utf-8')
+                    flow.request.content = bytes(gzip.compress(work) if is_gz else work)
                     
                     # [V2.1.6] Extract events in bulk to a flat timeline immediately
                     evts = body_json.get("evts", [])

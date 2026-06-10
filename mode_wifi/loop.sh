@@ -150,8 +150,29 @@ while true; do
         # [NEW] Detect Real IP before requesting task (fallback to local/tmp/curl if system curl is missing)
         CUR_IP=$(timeout 10 /usr/bin/adb -s "$DEV_ID" shell "[ -x /data/local/tmp/curl ] && /data/local/tmp/curl -s -4 --connect-timeout 3 https://ifconfig.me || curl -s -4 --connect-timeout 3 https://ifconfig.me" 2>/dev/null | tr -d '\r\n')
         if [ -z "$CUR_IP" ] || [[ ! "$CUR_IP" =~ ^[0-9] ]]; then
-            log_info "[$DEV_ID] Network unstable (No IP). Skipping..."
-            continue
+            log_info "[$DEV_ID] Network unstable (No IP). Attempting to auto-toggle LTE network..."
+            
+            # Detect active LTE subnets on host (checking for 192.168.X.100 patterns)
+            SUBNETS=$(ip -o -4 addr show | grep -oE '192\.168\.[0-9]+\.[0-9]+' | awk -F. '{print $3}' | sort -u)
+            if [ -n "$SUBNETS" ]; then
+                for SUB in $SUBNETS; do
+                    if [ "$SUB" -ge 11 ] && [ "$SUB" -le 30 ]; then
+                        log_info "[$DEV_ID] Toggling LTE subnet: $SUB"
+                        python3 "$MODE_WIFI_ROOT/smart_toggle.py" "$SUB" >/dev/null 2>&1
+                    fi
+                done
+            else
+                log_info "[$DEV_ID] No active LTE subnets found on host to toggle."
+            fi
+            
+            # Recheck IP after toggle
+            sleep 5
+            CUR_IP=$(timeout 10 /usr/bin/adb -s "$DEV_ID" shell "[ -x /data/local/tmp/curl ] && /data/local/tmp/curl -s -4 --connect-timeout 3 https://ifconfig.me || curl -s -4 --connect-timeout 3 https://ifconfig.me" 2>/dev/null | tr -d '\r\n')
+            if [ -z "$CUR_IP" ] || [[ ! "$CUR_IP" =~ ^[0-9] ]]; then
+                log_info "[$DEV_ID] Network still unstable (No IP) after toggle. Skipping..."
+                continue
+            fi
+            log_info "[$DEV_ID] Network recovered! IP: $CUR_IP"
         fi
 
         # 3. Request Task (V3 POST Style)
