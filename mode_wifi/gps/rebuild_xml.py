@@ -3,8 +3,9 @@ import os
 import sys
 
 def build_xml(target_file, speed, dev_id):
-    # run_gps_multi.sh와 완벽히 일치하는 파일명 사용
-    output_path = f"/tmp/gps_prefs_{dev_id}.xml"
+    output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tmp")
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"gps_prefs_{dev_id}.xml")
     
     if not os.path.exists(target_file):
         print(f" [-] Error: Route file {target_file} not found.")

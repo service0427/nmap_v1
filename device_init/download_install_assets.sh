@@ -27,23 +27,23 @@ fi
 echo "[*] Google Drive에서 최적화 및 설치에 필요한 대용량 파일들을 다운로드합니다..."
 
 # Check and install gdown if not present
-if ! command -v gdown &> /dev/null; then
+if ! command -v gdown &> /dev/null && [ ! -f "$HOME/.local/bin/gdown" ]; then
     echo "[*] 'gdown' 패키지가 설치되어 있지 않습니다. pip를 통해 설치를 진행합니다..."
     export PATH=$PATH:$HOME/.local/bin:/usr/local/bin
     
     python3 -m pip install --upgrade gdown --break-system-packages 2>/dev/null || \
     python3 -m pip install --upgrade gdown 2>/dev/null || \
     pip3 install --upgrade gdown 2>/dev/null
-    
-    # Verify installation
-    if ! command -v gdown &> /dev/null; then
-        if [ -f "$HOME/.local/bin/gdown" ]; then
-            alias gdown="$HOME/.local/bin/gdown"
-        else
-            echo "[-] 'gdown' 설치에 실패했습니다. python3-pip 환경을 확인해주세요."
-            exit 1
-        fi
-    fi
+fi
+
+# Verify installation and resolve executable path
+if command -v gdown &> /dev/null; then
+    GDOWN_BIN="gdown"
+elif [ -f "$HOME/.local/bin/gdown" ]; then
+    GDOWN_BIN="$HOME/.local/bin/gdown"
+else
+    echo "[-] 'gdown' 설치에 실패했습니다. python3-pip 환경을 확인해주세요."
+    exit 1
 fi
 
 # Check and install tar if not present
@@ -65,7 +65,7 @@ fi
 
 # Download archive from Google Drive
 echo "[*] Google Drive에서 파일 다운로드 중 (File ID: $GDRIVE_FILE_ID)..."
-gdown "$GDRIVE_FILE_ID" -O "$ARCHIVE_PATH"
+"$GDOWN_BIN" "$GDRIVE_FILE_ID" -O "$ARCHIVE_PATH"
 
 if [ $? -eq 0 ] && [ -f "$ARCHIVE_PATH" ]; then
     echo "[✓] 다운로드 완료. 기존 install 폴더가 존재할 경우 백업 후 새로 압축을 해제합니다..."

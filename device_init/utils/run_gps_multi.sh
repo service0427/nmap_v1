@@ -54,8 +54,8 @@ echo "    > New Distance: $DISTANCE km | Target Speed: $REQUIRED_SPEED km/h"
 
 echo "[-] Rebuilding Premium XML locally..."
 adb -s "$DEVICE_ID" shell am force-stop "$PKG_NAME"
-
-LOCAL_TMP="/tmp/final_1_prefs_${DEVICE_ID}.xml"
+BASE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+LOCAL_TMP="$BASE_DIR/../tmp/final_1_prefs_${DEVICE_ID}.xml"
 python3 utils/rebuild_xml.py "$ROUTE_PATH" "$REQUIRED_SPEED" "$DEVICE_ID" > /dev/null
 
 echo "[-] Injecting data to device..."

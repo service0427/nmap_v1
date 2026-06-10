@@ -58,7 +58,7 @@ init_app_installation() {
     fi
 
     # 3. App Installation with Pass Logic
-    local installed_packages=$(adb -s "$serial" shell pm list packages | cut -d':' -f2)
+    local installed_packages=$(adb -s "$serial" shell pm list packages | cut -d':' -f2 | tr -d '\r')
     for app in "${APPS[@]}"; do
         IFS=':' read -r pkg type files <<< "$app"
         if echo "$installed_packages" | grep -qx "$pkg"; then

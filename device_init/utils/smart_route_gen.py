@@ -132,8 +132,7 @@ def generate_routes(target_id=None, filename=None):
     for d in saved:
         if d["id"] == str(target_id): selected_dest = d; break
     if not selected_dest: return
-
-    LIB_DIR = "/tmp/route_library"
+    LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tmp", "route_library")
     os.makedirs(LIB_DIR, exist_ok=True)
     if not filename: filename = "Target_Route_01.json"
     

@@ -96,7 +96,21 @@ if [ -z "$TARGET_DEVICE" ]; then
     fi
     echo -e "${GREEN}[✓] All connected devices passed root check. Proceeding to initialization...${NC}\n"
 fi
-
+# Ensure installation assets are present before initializing devices
+INSTALL_DIR="$BASE_DIR/install"
+if [ ! -d "$INSTALL_DIR" ] || [ ! -f "$INSTALL_DIR/com.nhn.android.nmap_6.6.1/base.apk" ]; then
+    echo -e "${YELLOW}[*] Installation assets missing or incomplete. Triggering download...${NC}"
+    if [ -f "$BASE_DIR/device_init/download_install_assets.sh" ]; then
+        bash "$BASE_DIR/device_init/download_install_assets.sh"
+        if [ $? -ne 0 ]; then
+            echo -e "\e[1;31m[-] Error: Failed to download installation assets from Google Drive.\e[0m"
+            exit 1
+        fi
+    else
+        echo -e "\e[1;31m[-] Error: download_install_assets.sh not found.\e[0m"
+        exit 1
+    fi
+fi
 
 for serial in $DEVICES; do
     echo -e "${CYAN}============================================================${NC}"

@@ -60,21 +60,33 @@ init_magisk_setup() {
                 local is_installed=$(adb -s "$serial" shell "$has_su -c '[ -d /data/adb/modules/$mod_id ] && echo \"YES\" || echo \"NO\"'" | tr -d '\r')
                 
                 if [ "$is_installed" = "YES" ]; then
-                    echo -e "    [✓] Module ${GREEN}$zip_name${NC} (ID: $mod_id) is already ${GREEN}INSTALLED${NC}. Skipping."
+                    # Check if the module is currently disabled
+                    local is_disabled=$(adb -s "$serial" shell "$has_su -c '[ -f /data/adb/modules/$mod_id/disable ] && echo \"YES\" || echo \"NO\"'" | tr -d '\r')
+                    if [ "$is_disabled" = "YES" ]; then
+                        echo -e "    - Module ${YELLOW}$zip_name${NC} (ID: $mod_id) is installed but ${YELLOW}DISABLED${NC}."
+                        echo -e "    - Enabling module..."
+                        adb -s "$serial" shell "$has_su -c 'rm -f /data/adb/modules/$mod_id/disable'" >/dev/null 2>&1
+                        reboot_required=true
+                    else
+                        echo -e "    [✓] Module ${GREEN}$zip_name${NC} (ID: $mod_id) is already ${GREEN}INSTALLED & ACTIVE${NC}. Skipping."
+                    fi
                 else
                     echo -e "    - Module ${YELLOW}$zip_name${NC} (ID: $mod_id) is ${YELLOW}NOT INSTALLED${NC}."
                     echo -e "    - Installing module..."
                     
-                    # Run unattended installation
-                    adb -s "$serial" shell "$has_su -c 'magisk --install-module \"$zip_path\"'" >/dev/null 2>&1
+                    # Run unattended installation and capture output/errors
+                    local install_log=$(adb -s "$serial" shell "$has_su -c 'magisk --install-module \"$zip_path\"'" 2>&1)
                     
                     # Verify installation
                     local verify_install=$(adb -s "$serial" shell "$has_su -c '[ -d /data/adb/modules/$mod_id ] && echo \"YES\" || echo \"NO\"'" | tr -d '\r')
                     if [ "$verify_install" = "YES" ]; then
+                        # Make sure it's not disabled
+                        adb -s "$serial" shell "$has_su -c 'rm -f /data/adb/modules/$mod_id/disable'" >/dev/null 2>&1
                         echo -e "    [✓] Module $zip_name installed successfully."
                         reboot_required=true
                     else
                         echo -e "    [!] Failed to install module $zip_name."
+                        echo -e "    [!] Magisk install output:\n$install_log"
                     fi
                 fi
             done

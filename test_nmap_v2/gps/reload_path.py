@@ -131,16 +131,17 @@ def run_reload(packet_file, device_id):
     # [V7.1 Logging] Debug calculation info
     print(f"[{get_now()}] [V7.1] Path Reloaded: {dist_km:.2f}km | Initial: {initial_dist_km:.2f}km | TargetTime: {target_sec}s")
     print(f"[{get_now()}] [V7.1] Calculation: ({initial_dist_km:.2f} / ({target_sec}/3600)) = {final_kmh} km/h")
-    
-    temp_route = f"/tmp/hot_route_{device_id}.json"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    tmp_dir = os.path.join(os.path.dirname(script_dir), "tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+    temp_route = os.path.join(tmp_dir, f"hot_route_{device_id}.json")
     with open(temp_route, "w") as f: json.dump(coords, f)
     
     try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
         subprocess.run(["python3", os.path.join(script_dir, "rebuild_xml.py"), temp_route, str(final_kmh), device_id], check=True)
         
         pkg = "com.rosteam.gpsemulator"
-        local_xml = f"/tmp/gps_prefs_{device_id}.xml"
+        local_xml = os.path.join(tmp_dir, f"gps_prefs_{device_id}.xml")
         android_tmp = f"/data/local/tmp/hot_gps_{device_id}.xml"
         prefs_path = f"/data/data/{pkg}/shared_prefs/{pkg}_preferences.xml"
         

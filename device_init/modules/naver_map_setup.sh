@@ -158,8 +158,12 @@ init_naver_map() {
     # Force stop to avoid setting override by cached memory of active app
     adb -s "$serial" shell "am force-stop com.nhn.android.nmap"
     
+    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local HOST_TMP="$(cd "$SCRIPT_DIR/.." && pwd)/tmp"
+    mkdir -p "$HOST_TMP"
+
     # Create the modification script to run on the device
-    cat << 'EOF' > /tmp/nmap_mute_$serial.sh
+    cat << 'EOF' > "$HOST_TMP/nmap_mute_$serial.sh"
 #!/system/bin/sh
 DEFAULTS_FILE="/data/data/com.nhn.android.nmap/shared_prefs/NativeNaviDefaults.xml"
 SETTINGS_FILE="/data/data/com.nhn.android.nmap/shared_prefs/NaviSettingsInfo.xml"
@@ -205,10 +209,10 @@ fi
 EOF
 
     # Push and execute the helper script
-    adb -s "$serial" push /tmp/nmap_mute_$serial.sh /data/local/tmp/nmap_mute.sh >/dev/null 2>&1
+    adb -s "$serial" push "$HOST_TMP/nmap_mute_$serial.sh" /data/local/tmp/nmap_mute.sh >/dev/null 2>&1
     adb -s "$serial" shell "$has_su -c 'sh /data/local/tmp/nmap_mute.sh'"
     adb -s "$serial" shell "$has_su -c 'rm -f /data/local/tmp/nmap_mute.sh'"
-    rm -f /tmp/nmap_mute_$serial.sh
+    rm -f "$HOST_TMP/nmap_mute_$serial.sh"
 
     # C. Restore permissions & labels
     local su_cmd="su"

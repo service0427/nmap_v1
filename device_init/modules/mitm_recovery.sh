@@ -56,7 +56,7 @@ init_mitm_recovery() {
         fi
 
         local active_script="/data/adb/modules/trustusercerts/post-fs-data.sh"
-        local check_active=$(adb -s "$serial" shell "$has_su -c \"[ -f $active_script ] && grep -c '\[교정됨\]' $active_script || echo 0\"" 2>/dev/null | tr -d '\r')
+        local check_active=$(adb -s "$serial" shell "$has_su -c \"[ -f $active_script ] && (grep -q '\[교정됨\]' $active_script && echo 1 || echo 0) || echo 0\"" 2>/dev/null | tr -d '\r')
         if [ "$check_active" = "0" ] || [ -z "$check_active" ]; then
             script_correct=false
         fi
@@ -71,7 +71,7 @@ init_mitm_recovery() {
     local update_dir_exists=$(adb -s "$serial" shell "$has_su -c '[ -d /data/adb/modules_update/trustusercerts ] && echo YES || echo NO'" 2>/dev/null | tr -d '\r')
     if [ "$update_dir_exists" = "YES" ]; then
         local update_script="/data/adb/modules_update/trustusercerts/post-fs-data.sh"
-        local check_update=$(adb -s "$serial" shell "$has_su -c \"[ -f $update_script ] && grep -c '\[교정됨\]' $update_script || echo 0\"" 2>/dev/null | tr -d '\r')
+        local check_update=$(adb -s "$serial" shell "$has_su -c \"[ -f $update_script ] && (grep -q '\[교정됨\]' $update_script && echo 1 || echo 0) || echo 0\"" 2>/dev/null | tr -d '\r')
         if [ "$check_update" = "0" ] || [ -z "$check_update" ]; then
             script_correct=false
         fi
@@ -86,8 +86,12 @@ init_mitm_recovery() {
     # 3. Write correction script and wipe certificates
     echo -e "    - Recovering/injecting certificate and correcting script..."
     
+    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local HOST_TMP="$(cd "$SCRIPT_DIR/.." && pwd)/tmp"
+    mkdir -p "$HOST_TMP"
+    
     # 3.1 Correcting post-fs-data.sh
-    cat << 'EOF' > /tmp/fix_script_$serial.sh
+    cat << 'EOF' > "$HOST_TMP/fix_script_$serial.sh"
 #!/system/bin/sh
 MOD_SCRIPT_ACTIVE="/data/adb/modules/trustusercerts/post-fs-data.sh"
 MOD_SCRIPT_UPDATE="/data/adb/modules_update/trustusercerts/post-fs-data.sh"
@@ -125,6 +129,9 @@ collect_user_certs(){
             done
         fi
     done
+
+    # [교정됨] 복사된 모든 인증서의 SELinux 컨텍스트를 올바르게 지정
+    chcon -R u:object_r:system_security_cacerts_file:s0 $MODDIR$SYS_CERT_DIR 2>/dev/null || true
 }
 
 main(){
@@ -155,7 +162,7 @@ fi
 EOF
 
     # 3.2 Wipe certificate cache
-    cat << EOF2 > /tmp/wipe_cert_$serial.sh
+    cat << EOF2 > "$HOST_TMP/wipe_cert_$serial.sh"
 #!/system/bin/sh
 CERT_FILE="$cert_hash.0"
 echo "Wiping user and module cert caches..."
@@ -164,38 +171,45 @@ rm -f /data/adb/modules/trustusercerts/system/etc/security/cacerts/\$CERT_FILE
 EOF2
 
     # Push and execute scripts
-    adb -s "$serial" push /tmp/fix_script_$serial.sh /data/local/tmp/fix_script.sh >/dev/null 2>&1
-    adb -s "$serial" push /tmp/wipe_cert_$serial.sh /data/local/tmp/wipe_cert.sh >/dev/null 2>&1
+    adb -s "$serial" push "$HOST_TMP/fix_script_$serial.sh" /data/local/tmp/fix_script.sh >/dev/null 2>&1
+    adb -s "$serial" push "$HOST_TMP/wipe_cert_$serial.sh" /data/local/tmp/wipe_cert.sh >/dev/null 2>&1
 
     adb -s "$serial" shell "$has_su -c 'sh /data/local/tmp/fix_script.sh'" >/dev/null 2>&1
     adb -s "$serial" shell "$has_su -c 'sh /data/local/tmp/wipe_cert.sh'" >/dev/null 2>&1
 
     adb -s "$serial" shell "rm -f /data/local/tmp/fix_script.sh /data/local/tmp/wipe_cert.sh"
-    rm -f /tmp/fix_script_$serial.sh /tmp/wipe_cert_$serial.sh
+    rm -f "$HOST_TMP/fix_script_$serial.sh" "$HOST_TMP/wipe_cert_$serial.sh"
 
     # 3.3 Certificate Injection
     adb -s "$serial" push "$CERT_PATH" "/data/local/tmp/$cert_hash.0" >/dev/null 2>&1
-    cat << 'EOF3' > /tmp/cert_inject_$serial.sh
+    cat << 'EOF3' > "$HOST_TMP/cert_inject_$serial.sh"
 CERT_FILE=$1
 mkdir -p /data/misc/user/0/cacerts-added
 cp /data/local/tmp/$CERT_FILE /data/misc/user/0/cacerts-added/$CERT_FILE
 chown system:system /data/misc/user/0/cacerts-added/$CERT_FILE
 chmod 644 /data/misc/user/0/cacerts-added/$CERT_FILE
 
-if [ -d "/data/adb/modules/trustusercerts/system/etc/security/cacerts" ]; then
-    cp /data/local/tmp/$CERT_FILE /data/adb/modules/trustusercerts/system/etc/security/cacerts/$CERT_FILE
-    chown root:root /data/adb/modules/trustusercerts/system/etc/security/cacerts/$CERT_FILE
-    chmod 644 /data/adb/modules/trustusercerts/system/etc/security/cacerts/$CERT_FILE
-    chcon u:object_r:system_security_cacerts_file:s0 /data/adb/modules/trustusercerts/system/etc/security/cacerts/$CERT_FILE 2>/dev/null
-fi
+inject_module_cert() {
+    local mod_dir=$1
+    if [ -d "$mod_dir" ]; then
+        mkdir -p "$mod_dir/system/etc/security/cacerts"
+        cp /data/local/tmp/$CERT_FILE "$mod_dir/system/etc/security/cacerts/$CERT_FILE"
+        chown root:root "$mod_dir/system/etc/security/cacerts/$CERT_FILE"
+        chmod 644 "$mod_dir/system/etc/security/cacerts/$CERT_FILE"
+        chcon u:object_r:system_security_cacerts_file:s0 "$mod_dir/system/etc/security/cacerts/$CERT_FILE" 2>/dev/null
+    fi
+}
+
+inject_module_cert "/data/adb/modules/trustusercerts"
+inject_module_cert "/data/adb/modules_update/trustusercerts"
 
 rm -f /data/local/tmp/$CERT_FILE
 EOF3
 
-    adb -s "$serial" push /tmp/cert_inject_$serial.sh /data/local/tmp/cert_inject.sh >/dev/null 2>&1
+    adb -s "$serial" push "$HOST_TMP/cert_inject_$serial.sh" /data/local/tmp/cert_inject.sh >/dev/null 2>&1
     adb -s "$serial" shell "$has_su -c 'sh /data/local/tmp/cert_inject.sh $cert_hash.0'" >/dev/null 2>&1
     adb -s "$serial" shell "rm -f /data/local/tmp/cert_inject.sh"
-    rm -f /tmp/cert_inject_$serial.sh
+    rm -f "$HOST_TMP/cert_inject_$serial.sh"
 
     # 4. Reboot Device
     echo -e "    - Recovery complete. Rebooting device to apply system cert mounting..."

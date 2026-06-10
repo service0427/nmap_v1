@@ -82,8 +82,7 @@ def main():
     if not route_pts:
         print("[!] Decoder could not extract route geometry from ANY of the recent logs.")
         sys.exit(1)
-    
-    lib_dir = "/tmp/route_library"
+    lib_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tmp", "route_library")
     os.makedirs(lib_dir, exist_ok=True)
     filename = f"reload_{device_id}.json"
     full_path = os.path.join(lib_dir, filename)

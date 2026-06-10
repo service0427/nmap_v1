@@ -10,7 +10,9 @@ PROJECT_ROOT = os.path.dirname(LIB_DIR)
 ROUTE_DIR = os.path.join(PROJECT_ROOT, "route_library")
 
 def build_xml(target_file=None, speed=60.0, dev_id="default"):
-    output_path = f"/tmp/final_1_prefs_{dev_id}.xml"
+    output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tmp")
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"final_1_prefs_{dev_id}.xml")
     if target_file and os.path.exists(target_file):
         route_json = target_file
     else:
