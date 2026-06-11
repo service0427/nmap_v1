@@ -68,9 +68,12 @@ for serial in $DEVICES; do
 
     CURL_OK="NO"
     if [ "$IS_BORING" = "YES" ]; then
-        TEST_IP=$(adb -s "$serial" shell "curl -s -4 --connect-timeout 3 https://ifconfig.me" 2>/dev/null | tr -d '\r\n')
-        if [[ "$TEST_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            CURL_OK="YES"
+        resolved_ip=$(adb -s "$serial" shell "ping -c 1 -W 2 ifconfig.me | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'" 2>/dev/null | tr -d '\r\n')
+        if [ -n "$resolved_ip" ]; then
+            TEST_IP=$(adb -s "$serial" shell "curl -s -4 --connect-timeout 3 --resolve ifconfig.me:443:$resolved_ip https://ifconfig.me" 2>/dev/null | tr -d '\r\n')
+            if [[ "$TEST_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                CURL_OK="YES"
+            fi
         fi
     fi
 

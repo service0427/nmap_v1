@@ -45,12 +45,15 @@ for serial in $DEVICES; do
     fi
     
     if [ "$is_boring" = "YES" ]; then
-        test_ip=$(adb -s "$serial" shell "curl -s -4 --connect-timeout 3 https://ifconfig.me" 2>/dev/null | tr -d '\r\n')
-        if [[ "$test_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            # Clean up residual resolv.conf files if any exist on an already working device
-            adb -s "$serial" shell "su -c 'rm -f /system/etc/resolv.conf /etc/resolv.conf'" >/dev/null 2>&1
-            echo -e "  ${GREEN}[✓] Device already has fully functional BoringSSL curl. Skipping.${NC}"
-            continue
+        resolved_ip=$(adb -s "$serial" shell "ping -c 1 -W 2 ifconfig.me | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'" 2>/dev/null | tr -d '\r\n')
+        if [ -n "$resolved_ip" ]; then
+            test_ip=$(adb -s "$serial" shell "curl -s -4 --connect-timeout 3 --resolve ifconfig.me:443:$resolved_ip https://ifconfig.me" 2>/dev/null | tr -d '\r\n')
+            if [[ "$test_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                # Clean up residual resolv.conf files if any exist on an already working device
+                adb -s "$serial" shell "su -c 'rm -f /system/etc/resolv.conf /etc/resolv.conf'" >/dev/null 2>&1
+                echo -e "  ${GREEN}[✓] Device already has fully functional BoringSSL curl. Skipping.${NC}"
+                continue
+            fi
         fi
     fi
 
@@ -81,17 +84,29 @@ for serial in $DEVICES; do
     
     # 3. Verify native BoringSSL curl via HTTPS
     echo "  - Verifying HTTPS connection (without -k)..."
-    TEST_IP=$(adb -s "$serial" shell "curl -s -4 --connect-timeout 5 https://ifconfig.me" | tr -d '\r\n')
+    resolved_ip=$(adb -s "$serial" shell "ping -c 1 -W 2 ifconfig.me | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'" 2>/dev/null | tr -d '\r\n')
+    
+    TEST_IP=""
+    if [ -n "$resolved_ip" ]; then
+        TEST_IP=$(adb -s "$serial" shell "curl -sS -4 --connect-timeout 5 --resolve ifconfig.me:443:$resolved_ip https://ifconfig.me 2>&1" | tr -d '\r\n')
+    else
+        TEST_IP="DNS resolution failed via ping"
+    fi
     
     if [[ "$TEST_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         echo -e "  ${GREEN}[✓] Recovery SUCCESS! Real IP detected: $TEST_IP${NC}"
     else
         # Try fallback check using -k in case it's a proxy issue
-        TEST_IP_K=$(adb -s "$serial" shell "curl -k -s -4 --connect-timeout 5 https://ifconfig.me" | tr -d '\r\n')
+        if [ -n "$resolved_ip" ]; then
+            TEST_IP_K=$(adb -s "$serial" shell "curl -k -sS -4 --connect-timeout 5 --resolve ifconfig.me:443:$resolved_ip https://ifconfig.me 2>&1" | tr -d '\r\n')
+        else
+            TEST_IP_K="DNS resolution failed via ping"
+        fi
+        
         if [[ "$TEST_IP_K" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo -e "  ${YELLOW}[⚠️] curl works with -k, but standard HTTPS failed. Output: $TEST_IP_K${NC}"
         else
-            echo -e "  ${RED}[!] Verification FAILED. Output: $TEST_IP${NC}"
+            echo -e "  ${RED}[!] Verification FAILED. Output: $TEST_IP (Fallback: $TEST_IP_K)${NC}"
         fi
     fi
 done
