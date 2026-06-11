@@ -107,6 +107,24 @@ for serial in $DEVICES; do
             echo -e "  ${YELLOW}[⚠️] curl works with -k, but standard HTTPS failed. Output: $TEST_IP_K${NC}"
         else
             echo -e "  ${RED}[!] Verification FAILED. Output: $TEST_IP (Fallback: $TEST_IP_K)${NC}"
+            
+            # Print diagnostic information
+            local device_proxy=$(adb -s "$serial" shell "settings get global http_proxy" 2>/dev/null | tr -d '\r\n')
+            local cert_details=""
+            if [ -n "$resolved_ip" ]; then
+                cert_details=$(adb -s "$serial" shell "curl -Iv -4 --connect-timeout 5 --resolve ifconfig.me:443:$resolved_ip https://ifconfig.me 2>&1" | grep -E 'Server certificate|subject|issuer|subjectAltName|SSL connection|expire date' | sed 's/^/      /')
+            else
+                cert_details=$(adb -s "$serial" shell "curl -Iv -4 --connect-timeout 5 https://ifconfig.me 2>&1" | grep -E 'Server certificate|subject|issuer|subjectAltName|SSL connection|expire date' | sed 's/^/      /')
+            fi
+            echo -e "  ${YELLOW}[Diagnostics]${NC}"
+            echo -e "    - Resolved IP: $resolved_ip"
+            echo -e "    - Device Global Proxy: $device_proxy"
+            echo -e "    - Certificate Details:"
+            if [ -n "$cert_details" ]; then
+                echo "$cert_details"
+            else
+                echo "      (Could not retrieve certificate details)"
+            fi
         fi
     fi
 done
