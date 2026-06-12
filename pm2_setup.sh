@@ -59,6 +59,16 @@ else
     echo "[!] log_clean.sh not found. Skipping."
 fi
 
+# 4.5 Register LTE Usage Sender (Daemon)
+if [ -f "utils/send_lte_usage.py" ]; then
+    echo "[*] Registering Nmap LTE Usage Sender (Daemon)..."
+    chmod +x utils/send_lte_usage.py
+    pm2 delete lte-usage-sender 2>/dev/null
+    pm2 start utils/send_lte_usage.py --name "lte-usage-sender" --interpreter python3 -- --daemon
+else
+    echo "[!] utils/send_lte_usage.py not found. Skipping."
+fi
+
 # 5. Save & Setup Startup
 echo "[*] Finalizing PM2 configuration..."
 pm2 save

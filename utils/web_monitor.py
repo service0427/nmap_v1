@@ -11,7 +11,18 @@ app = Flask(__name__)
 # --- CONFIGURATION ---
 PORT = 5000
 REFRESH_INTERVAL = 0.12  # 약 8fps (모니터링 최적, ADB 부하 최소화)
-MAX_SLOTS = 5
+
+# Find initial connected devices count to dynamically set MAX_SLOTS
+def get_connected_devices_count():
+    try:
+        output = subprocess.check_output(["adb", "devices"], timeout=3).decode("utf-8")
+        lines = output.strip().split("\n")[1:]
+        count = sum(1 for line in lines if line.strip() and "device" in line)
+        return max(10, count)
+    except:
+        return 10
+
+MAX_SLOTS = get_connected_devices_count()
 LOG_BASE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "test_nmap_v2", "logs")
 
 # 기기 위치 고정 및 진단 캐시
@@ -384,7 +395,7 @@ def get_device_diagnostics(serial):
     return info
 
 def refresh_device_slots():
-    global device_slots
+    global device_slots, MAX_SLOTS
     try:
         output = subprocess.check_output(["adb", "devices", "-l"], timeout=5).decode("utf-8")
         lines = output.strip().split("\n")[1:]
@@ -422,6 +433,10 @@ def refresh_device_slots():
                     device_slots[i] = {"id": serial, "model": model, "offline": False, **diag}
                     assigned = True
                     break
+            if not assigned:
+                diag = get_device_diagnostics(serial)
+                device_slots.append({"id": serial, "model": model, "offline": False, **diag})
+                MAX_SLOTS = len(device_slots)
     except:
         pass
 
