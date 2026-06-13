@@ -1,5 +1,5 @@
 #!/bin/bash
-# test_nmap_v2/lib/main.sh: Unified Task Execution Engine (V4.1 - Real IP Verification)
+# wifi_single/lib/main.sh: Unified Task Execution Engine (V4.1 - Real IP Verification)
 export PATH="$HOME/.local/bin:$PATH"
 
 # --- [ADB TIMEOUT WRAPPER] ---

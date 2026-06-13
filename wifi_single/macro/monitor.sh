@@ -1,5 +1,5 @@
 #!/bin/bash
-# test_nmap_v2/macro/monitor.sh: V18.4 Packet-File Based Silence Kill
+# wifi_single/macro/monitor.sh: V18.4 Packet-File Based Silence Kill
 
 # --- [ADB TIMEOUT WRAPPER] ---
 # 'command' 대신 실제 경로를 사용하여 timeout이 정상적으로 실행되도록 합니다.

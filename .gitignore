@@ -24,8 +24,9 @@ install/
 # Logs
 logs/
 *.log
-test_nmap_v1/logs/
-test_nmap_v2/logs/
+wifi_single/logs/
+wifi_single/tmp/
 api_server/logs/
 nohup.out
 install.tar.gz
+utils/lte_rotator_state.json

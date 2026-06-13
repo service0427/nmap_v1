@@ -1,5 +1,5 @@
 #!/bin/bash
-# test_nmap_v2: Smart Multi-Device Task Orchestrator (V2.9.8 - Stability & Efficiency Fix)
+# wifi_single: Smart Multi-Device Task Orchestrator (V1.0.0 - Single Mode)
 
 # Parse Arguments
 SKIP_IP=false; SINGLE_DEV_ID=""
