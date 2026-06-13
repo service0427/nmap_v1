@@ -214,11 +214,21 @@ while true; do
         
         log_success "[$DEV_ID] ALLOCATED: $NAME | TaskID: $TASK_ID"
 
+        # Record Spoofed Identity
+        SPOOFED_JSON=$(echo "$RESPONSE" | jq -c '.identity.spoofed // empty')
+        if [ -n "$SPOOFED_JSON" ]; then
+            curl -s -X POST "http://$API_SERVER/api/v1/update_status" \
+                 -H "Content-Type: application/json" \
+                 -d "{\"task_id\": $TASK_ID, \"status\": \"ALLOCATED\", \"device_id\": \"$DEV_ID\", \"spoofed_identity\": $SPOOFED_JSON}" >> "${DEV_TMP_DIR}/main_debug.log" 2>/dev/null
+        fi
+
         # Pre-register for safety
         echo "{\"task_id\": \"$TASK_ID\", \"start_ts\": $(date +%s), \"status\": \"ALLOCATING\"}" > "$CURRENT_TASK_JSON"
 
         # 7. EXECUTE ENGINE
         DEBUG_LOG="${DEV_TMP_DIR}/main_debug.log"
+        ARR_TIME=$(echo "$RESPONSE" | jq -r '.arrival_time // 0')
+        
         NMAP_API_RESPONSE="$RESPONSE" \
         NMAP_LOG_ID="$TASK_ID" \
         NMAP_TASK_ID="$TASK_ID" \
@@ -231,7 +241,18 @@ while true; do
         NMAP_START_LNG=$(echo "$RESPONSE" | jq -r '.start_pos.lng') \
         NMAP_START_SPEED=$(echo "$RESPONSE" | jq -r '.start_pos.speed_kmh // 0') \
         NMAP_START_DIST=$(echo "$RESPONSE" | jq -r '.start_pos.dist_m // 0') \
-        NMAP_MIN_ARRIVAL=$(echo "$RESPONSE" | jq -r '.arrival_time // 0') \
+        NMAP_MIN_ARRIVAL="$ARR_TIME" \
+        NMAP_MAX_ARRIVAL=$(( ARR_TIME + 60 )) \
+        NMAP_ID_SSAID=$(echo "$RESPONSE" | jq -r '.identity.spoofed.ssaid // empty') \
+        NMAP_ID_ADID=$(echo "$RESPONSE" | jq -r '.identity.spoofed.adid // empty') \
+        NMAP_ID_IDFV=$(echo "$RESPONSE" | jq -r '.identity.spoofed.idfv // empty') \
+        NMAP_ID_NI=$(echo "$RESPONSE" | jq -r '.identity.spoofed.ni // empty') \
+        NMAP_ID_TOKEN=$(echo "$RESPONSE" | jq -r '.identity.spoofed.token // empty') \
+        NMAP_ORIG_SSAID=$(echo "$RESPONSE" | jq -r '.identity.original.ssaid // empty') \
+        NMAP_ORIG_ADID=$(echo "$RESPONSE" | jq -r '.identity.original.adid // empty') \
+        NMAP_ORIG_IDFV=$(echo "$RESPONSE" | jq -r '.identity.original.idfv // empty') \
+        NMAP_ORIG_NI=$(echo "$RESPONSE" | jq -r '.identity.original.ni // empty') \
+        NMAP_ORIG_TOKEN=$(echo "$RESPONSE" | jq -r '.identity.original.token // empty') \
         NMAP_FRIDA_PORT="$FRIDA_PORT" \
         NMAP_NO_IP="$SKIP_IP" \
         setsid bash "$MODE_WIFI_LIB/main.sh" "$DEV_ID" >> "$DEBUG_LOG" 2>&1 &
