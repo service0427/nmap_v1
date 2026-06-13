@@ -195,24 +195,36 @@ CURRENT_SSID=$(adb -s "$DEV_ID" shell "cmd wifi status" 2>/dev/null | grep "SSID
 CONNECT_ADDR_OPT=""
 if [ -n "$CURRENT_SSID" ]; then
     # SSID 이름에서 가장 마지막에 나오는 11~20 사이의 숫자 추출 (예: U26-06-11 -> 11)
-    # [BUG FIX] grep -oE "1[1-9]|20" | tail -n 1 로 하여 마지막 숫자를 선택
     SUBNET_NUM=$(echo "$CURRENT_SSID" | grep -oE "1[1-9]|20" | tail -n 1)
     
-    if [ -n "$SUBNET_NUM" ]; then
-        TARGET_IF="lte$SUBNET_NUM"
-        TARGET_IP=$(ip -4 addr show "$TARGET_IF" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
-        
-        if [ -n "$TARGET_IP" ]; then
-            echo "[$DEV_ID] WiFi($CURRENT_SSID) -> Interface($TARGET_IF) -> IP($TARGET_IP)"
-            CONNECT_ADDR_OPT="--set connect_addr=$TARGET_IP"
-        else
-            echo "[$DEV_ID] [⚠️] Interface $TARGET_IF not found or has no IP. Falling back to default."
+    if [ -z "$SUBNET_NUM" ]; then
+        # [Single Mode Fallback] If no specific subnet in SSID, pick the first available LTE interface
+        TARGET_IF=$(ip -br link show | grep -E "^lte" | awk '{print $1}' | head -n 1)
+        if [ -n "$TARGET_IF" ]; then
+            TARGET_IP=$(ip -4 addr show "$TARGET_IF" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
         fi
     else
-        echo "[$DEV_ID] [⚠️] Could not extract subnet number from SSID ($CURRENT_SSID). Falling back."
+        TARGET_IF="lte$SUBNET_NUM"
+        TARGET_IP=$(ip -4 addr show "$TARGET_IF" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
+    fi
+    
+    if [ -n "$TARGET_IP" ]; then
+        echo "[$DEV_ID] WiFi($CURRENT_SSID) -> Interface($TARGET_IF) -> IP($TARGET_IP)"
+        CONNECT_ADDR_OPT="--set connect_addr=$TARGET_IP"
+    else
+        echo "[$DEV_ID] [⚠️] Interface $TARGET_IF not found or has no IP. Falling back to default routing."
     fi
 else
-    echo "[$DEV_ID] [⚠️] Device not connected to any Wi-Fi. Falling back to default routing."
+    # Even without Wi-Fi SSID, try to bind to LTE for safety
+    TARGET_IF=$(ip -br link show | grep -E "^lte" | awk '{print $1}' | head -n 1)
+    if [ -n "$TARGET_IF" ]; then
+        TARGET_IP=$(ip -4 addr show "$TARGET_IF" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
+        if [ -n "$TARGET_IP" ]; then
+            echo "[$DEV_ID] No SSID, but forcing Interface($TARGET_IF) -> IP($TARGET_IP)"
+            CONNECT_ADDR_OPT="--set connect_addr=$TARGET_IP"
+        fi
+    fi
+    [ -z "$TARGET_IP" ] && echo "[$DEV_ID] [⚠️] Device not connected to any Wi-Fi. Falling back to default routing."
 fi
 
 # 5. Workers
