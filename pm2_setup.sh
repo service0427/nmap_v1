@@ -60,9 +60,9 @@ fi
 if [ -f "wifi_single/run_scheduler.sh" ]; then
     echo "[*] Registering Wi-Fi Scheduler (Stopped)..."
     chmod +x wifi_single/run_scheduler.sh
-    pm2 delete wifi-scheduler 2>/dev/null
-    pm2 start wifi_single/run_scheduler.sh --name "wifi-scheduler" --no-autorestart
-    pm2 stop wifi-scheduler
+    pm2 delete wifi-single 2>/dev/null
+    pm2 start wifi_single/run_scheduler.sh --name "wifi-single" --no-autorestart
+    pm2 stop wifi-single
 else
     echo "[!] wifi_single/run_scheduler.sh not found. Skipping."
 fi
