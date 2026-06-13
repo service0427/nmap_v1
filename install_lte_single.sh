@@ -80,6 +80,17 @@ sudo netplan apply
 echo " -> Applied. Waiting 5 seconds for IP assignment..."
 sleep 5
 
+# 4.5 Register to PM2
+echo "[4.5/5] Registering wifi-single to PM2..."
+if [ -f "wifi_single/run_scheduler.sh" ]; then
+    chmod +x wifi_single/run_scheduler.sh
+    pm2 delete wifi-single 2>/dev/null || true
+    pm2 start wifi_single/run_scheduler.sh --name "wifi-single"
+    pm2 save
+else
+    echo "[!] wifi_single/run_scheduler.sh not found. Skipping PM2 registration."
+fi
+
 # 5. Verification
 echo "[5/5] Verifying setup..."
 echo "--- Routing Table ---"

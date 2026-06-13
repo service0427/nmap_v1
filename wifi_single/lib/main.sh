@@ -187,8 +187,36 @@ adb -s "$DEV_ID" reverse tcp:"$NMAP_FRIDA_PORT" tcp:"$NMAP_FRIDA_PORT" >/dev/nul
 adb -s "$DEV_ID" reverse tcp:"$NMAP_MITM_PORT" tcp:"$NMAP_MITM_PORT" >/dev/null 2>&1
 adb -s "$DEV_ID" shell settings put global http_proxy localhost:"$NMAP_MITM_PORT"
 
+# [NEW] Dynamic Multi-LTE Binding Logic (SSID Based)
+# This logic supports 1:N (1 Modem : Multiple Devices)
+echo "[$DEV_ID] Detecting connected Wi-Fi SSID..."
+CURRENT_SSID=$(adb -s "$DEV_ID" shell "cmd wifi status" 2>/dev/null | grep "SSID:" | head -1 | sed -E 's/.*SSID: "([^"]+)".*/\1/' | tr -d '\r\n')
+
+CONNECT_ADDR_OPT=""
+if [ -n "$CURRENT_SSID" ]; then
+    # SSID 이름에서 가장 마지막에 나오는 11~20 사이의 숫자 추출 (예: U26-06-11 -> 11)
+    # [BUG FIX] grep -oE "1[1-9]|20" | tail -n 1 로 하여 마지막 숫자를 선택
+    SUBNET_NUM=$(echo "$CURRENT_SSID" | grep -oE "1[1-9]|20" | tail -n 1)
+    
+    if [ -n "$SUBNET_NUM" ]; then
+        TARGET_IF="lte$SUBNET_NUM"
+        TARGET_IP=$(ip -4 addr show "$TARGET_IF" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
+        
+        if [ -n "$TARGET_IP" ]; then
+            echo "[$DEV_ID] WiFi($CURRENT_SSID) -> Interface($TARGET_IF) -> IP($TARGET_IP)"
+            CONNECT_ADDR_OPT="--set connect_addr=$TARGET_IP"
+        else
+            echo "[$DEV_ID] [⚠️] Interface $TARGET_IF not found or has no IP. Falling back to default."
+        fi
+    else
+        echo "[$DEV_ID] [⚠️] Could not extract subnet number from SSID ($CURRENT_SSID). Falling back."
+    fi
+else
+    echo "[$DEV_ID] [⚠️] Device not connected to any Wi-Fi. Falling back to default routing."
+fi
+
 # 5. Workers
-nohup mitmdump -p "$NMAP_MITM_PORT" -s mitm/addon.py --ssl-insecure --listen-host 0.0.0.0 --set flow_detail=0 > "$CAPTURE_LOG_DIR/mitm.log" 2>&1 &
+nohup mitmdump -p "$NMAP_MITM_PORT" $CONNECT_ADDR_OPT -s mitm/addon.py --ssl-insecure --listen-host 0.0.0.0 --set flow_detail=0 > "$CAPTURE_LOG_DIR/mitm.log" 2>&1 &
 MITM_PID=$!
 chmod +x macro/monitor.sh
 nohup ./macro/monitor.sh "$DEV_ID" "$CAPTURE_LOG_DIR" "$NMAP_DEST_ID" &
