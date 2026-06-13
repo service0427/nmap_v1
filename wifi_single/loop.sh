@@ -195,9 +195,16 @@ while true; do
 
         # 6. Request Task from API
         REQ_PAYLOAD="{\"device_id\":\"$DEV_ID\",\"ip\":\"$CUR_IP\"}"
+        
+        # [API TRACE] Log Request
+        echo "[$(NOW)] [REQ] /api/v1/request_task | Payload: $REQ_PAYLOAD" >> "${DEV_TMP_DIR}/api_trace.log"
+        
         RESPONSE=$(curl -s -X POST "http://$API_SERVER/api/v1/request_task" \
              -H "Content-Type: application/json" \
              -d "$REQ_PAYLOAD")
+             
+        # [API TRACE] Log Response
+        echo "[$(NOW)] [RES] $RESPONSE" >> "${DEV_TMP_DIR}/api_trace.log"
         
         if [ -z "$RESPONSE" ] || ! echo "$RESPONSE" | jq -e . >/dev/null 2>&1 || [ "$(echo "$RESPONSE" | jq -r '.status')" != "ok" ]; then
             log_info "[$DEV_ID] No task or API error."

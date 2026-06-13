@@ -53,9 +53,11 @@ cleanup() {
         if grep -q "ARRIVED" "$SUMMARY_PATH"; then FINAL_STATUS="SUCCESS"; fi
     fi
     
-    curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/report_result" \
-         -H "Content-Type: application/json" \
-         -d "{\"task_id\": $NMAP_TASK_ID, \"device_id\": \"$DEV_ID\", \"status\": \"$FINAL_STATUS\", \"message\": \"Terminated: $REASON\"}" > /dev/null
+    local REQ_PAYLOAD="{\"task_id\": $NMAP_TASK_ID, \"device_id\": \"$DEV_ID\", \"status\": \"$FINAL_STATUS\", \"message\": \"Terminated: $REASON\"}"
+    echo "[$(date +"%H:%M:%S.%3N")] [REQ] /api/v1/report_result | Payload: $REQ_PAYLOAD" >> "$EXEC_LOG"
+    local RESPONSE=$(curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/report_result" -H "Content-Type: application/json" -d "$REQ_PAYLOAD")
+    echo "[$(date +"%H:%M:%S.%3N")] [RES] $RESPONSE" >> "$EXEC_LOG"
+
 
     kill -9 $MITM_PID $FRIDA_PID $MONITOR_PID $RELOAD_PID $HEARTBEAT_PID 2>/dev/null
     adb -s "$DEV_ID" shell am force-stop $PKG_NAME
@@ -117,16 +119,18 @@ if [ "$NMAP_NO_IP" != "true" ]; then
     
     if [ "$CONNECTED" = false ]; then
         echo " [🚨] Network verification FAILED. Terminating session."
-        curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/update_status" \
-             -H "Content-Type: application/json" \
-             -d "{\"task_id\": $NMAP_TASK_ID, \"status\": \"FAIL_NETWORK_TIMEOUT\", \"device_id\": \"$DEV_ID\", \"drive_dist\": 0, \"drive_time\": 0}" > /dev/null
+        local REQ_PAYLOAD="{\"task_id\": $NMAP_TASK_ID, \"status\": \"FAIL_NETWORK_TIMEOUT\", \"device_id\": \"$DEV_ID\", \"drive_dist\": 0, \"drive_time\": 0}"
+        echo "[$(date +"%H:%M:%S.%3N")] [REQ] /api/v1/update_status | Payload: $REQ_PAYLOAD" >> "$EXEC_LOG"
+        local RES=$(curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/update_status" -H "Content-Type: application/json" -d "$REQ_PAYLOAD")
+        echo "[$(date +"%H:%M:%S.%3N")] [RES] $RES" >> "$EXEC_LOG"
         exit 1
     fi
 
     # Update Status to Server with Real IP
-    curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/update_status" \
-         -H "Content-Type: application/json" \
-         -d "{\"task_id\": $NMAP_TASK_ID, \"status\": \"IP_CHANGED\", \"device_id\": \"$DEV_ID\", \"real_ip\": \"$REAL_IP\", \"drive_dist\": 0, \"drive_time\": 0}" > /dev/null
+    local REQ_PAYLOAD="{\"task_id\": $NMAP_TASK_ID, \"status\": \"IP_CHANGED\", \"device_id\": \"$DEV_ID\", \"real_ip\": \"$REAL_IP\", \"drive_dist\": 0, \"drive_time\": 0}"
+    echo "[$(date +"%H:%M:%S.%3N")] [REQ] /api/v1/update_status | Payload: $REQ_PAYLOAD" >> "$EXEC_LOG"
+    local RES=$(curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/update_status" -H "Content-Type: application/json" -d "$REQ_PAYLOAD")
+    echo "[$(date +"%H:%M:%S.%3N")] [RES] $RES" >> "$EXEC_LOG"
     export NMAP_REAL_IP="$REAL_IP"
     sleep 2
 fi
