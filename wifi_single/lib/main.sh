@@ -59,7 +59,8 @@ cleanup() {
         if [ -f "$CAPTURE_LOG_DIR/.remaining_dist" ]; then
             local REM_KM=$(cat "$CAPTURE_LOG_DIR/.remaining_dist" | grep -oE "^[0-9.]+" || echo "999")
             local START_KM=$(awk "BEGIN {print $NMAP_START_DIST / 1000}")
-            if (( $(echo "$REM_KM < 1.0" | bc -l) )) || (( $(echo "$REM_KM < ($START_KM * 0.1)" | bc -l) )); then
+            local IS_PARTIAL=$(awk "BEGIN { if ($REM_KM < 1.0 || $REM_KM < ($START_KM * 0.1)) print 1; else print 0 }")
+            if [ "$IS_PARTIAL" == "1" ]; then
                 FINAL_STATUS="SUCCESS_PARTIAL"
                 REASON="Recovered Partial Success: Driven > 90% before crash/network drop (Rem: ${REM_KM}km)"
                 echo "[$DEV_ID] [🌟] $REASON"
