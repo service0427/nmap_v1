@@ -56,13 +56,12 @@ else
     echo "[!] utils/lte_ip_rotator.py not found. Skipping."
 fi
 
-# 4.7 Register Wi-Fi Scheduler (Stopped by default)
+# 4.7 Register Wi-Fi Scheduler (Autorestart Enabled)
 if [ -f "wifi_single/run_scheduler.sh" ]; then
-    echo "[*] Registering Wi-Fi Scheduler (Stopped)..."
+    echo "[*] Registering Wi-Fi Scheduler..."
     chmod +x wifi_single/run_scheduler.sh
     pm2 delete wifi-single 2>/dev/null
-    pm2 start wifi_single/run_scheduler.sh --name "wifi-single" --no-autorestart
-    pm2 stop wifi-single
+    pm2 start wifi_single/run_scheduler.sh --name "wifi-single"
 else
     echo "[!] wifi_single/run_scheduler.sh not found. Skipping."
 fi
