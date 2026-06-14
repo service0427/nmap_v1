@@ -183,9 +183,12 @@ jq -n \
 
 # 2. Cleanup, Screen Wakeup & Popup Clear
 echo "[$DEV_ID] Waking up screen and clearing system popups..."
-# 화면 켜기 (224) 및 잠금 해제 (82)
+# 화면 켜기 (224)
 adb -s "$DEV_ID" shell input keyevent 224
+# 잠금 해제 시도 (단순 키이벤트 82, 최신 OS용 dismiss-keyguard, 물리적 스와이프 복합 사용)
 adb -s "$DEV_ID" shell input keyevent 82
+adb -s "$DEV_ID" shell wm dismiss-keyguard 2>/dev/null || true
+adb -s "$DEV_ID" shell input swipe 500 1500 500 200 300
 # 혹시 모를 팝업(배터리, 시스템 알림)을 치우기 위해 뒤로가기(4) 후 홈(3)으로 이동
 adb -s "$DEV_ID" shell input keyevent 4
 adb -s "$DEV_ID" shell input keyevent 3
