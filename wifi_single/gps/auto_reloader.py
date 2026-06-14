@@ -221,6 +221,12 @@ def main(log_dir, device_id):
                     remaining_dist = RouteDecoder.calculate_distance(coords_list[start_idx:])
                     log_print(f"[🛣️] Progress: {remaining_dist:.2f} km remaining | Time: {elapsed}s / {total_target_sec}s")
                     
+                    # [NEW] Save remaining distance for partial success recovery
+                    try:
+                        with open(os.path.join(log_dir, ".remaining_dist"), "w") as f:
+                            f.write(str(remaining_dist))
+                    except: pass
+                    
                     # Stuck Detection Logic
                     if remaining_dist > 0.0:
                         if last_remaining_dist == 99999.9:

@@ -49,9 +49,22 @@ cleanup() {
     # [V3 STYLE] Report Final Result
     local FINAL_STATUS="FAIL"
     local SUMMARY_PATH="$CAPTURE_LOG_DIR/session_summary.json"
+    
+    # Check for perfect success
     if [ -f "$CAPTURE_LOG_DIR/.success" ]; then
         FINAL_STATUS="SUCCESS"
         REASON="Task Completed Successfully"
+    else
+        # [NEW] Partial Success Recovery (90%+ driven)
+        if [ -f "$CAPTURE_LOG_DIR/.remaining_dist" ]; then
+            local REM_KM=$(cat "$CAPTURE_LOG_DIR/.remaining_dist" | grep -oE "^[0-9.]+" || echo "999")
+            local START_KM=$(awk "BEGIN {print $NMAP_START_DIST / 1000}")
+            if (( $(echo "$REM_KM < 1.0" | bc -l) )) || (( $(echo "$REM_KM < ($START_KM * 0.1)" | bc -l) )); then
+                FINAL_STATUS="SUCCESS_PARTIAL"
+                REASON="Recovered Partial Success: Driven > 90% before crash/network drop (Rem: ${REM_KM}km)"
+                echo "[$DEV_ID] [🌟] $REASON"
+            fi
+        fi
     fi
     
     local REQ_PAYLOAD="{\"task_id\": $NMAP_TASK_ID, \"device_id\": \"$DEV_ID\", \"status\": \"$FINAL_STATUS\", \"message\": \"Terminated: $REASON\"}"
@@ -251,7 +264,7 @@ setsid python3 gps/auto_reloader.py "$CAPTURE_LOG_DIR" "$DEV_ID" >> "$EXEC_LOG" 
 RELOAD_PID=$!
 
 # 6. Launch & Frida
-echo "[$DEV_ID] Launching Optimized Session via Frida Attach..."
+echo "[$DEV_ID] Launching Optimized Session via Frida Spawn (Zero-Gap)..."
 FRIDA_LOG="$CAPTURE_LOG_DIR/frida.log"
 adb -s "$DEV_ID" forward tcp:"$NMAP_FRIDA_PORT" tcp:27042 >/dev/null 2>&1
 
@@ -264,34 +277,16 @@ echo "[$DEV_ID] App cache cleared."
 # [V3 STYLE] Start at API-provided location
 ./gps/static.sh "$DEV_ID" "$NMAP_START_LAT" "$NMAP_START_LNG"
 
-# Start the application first
-adb -s "$DEV_ID" shell monkey -p "$PKG_NAME" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
-
-# Poll for the PID of the app
-PID=""
-for i in {1..10}; do
-    PID=$(adb -s "$DEV_ID" shell pidof "$PKG_NAME" 2>/dev/null | tr -d '\r\n')
-    [ -n "$PID" ] && break
-    sleep 1
-done
-
-if [ -z "$PID" ]; then
-    adb -s "$DEV_ID" shell monkey -p "$PKG_NAME" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
-    sleep 3
-    PID=$(adb -s "$DEV_ID" shell pidof "$PKG_NAME" 2>/dev/null | tr -d '\r\n')
-fi
-
-if [ -z "$PID" ]; then
-    cleanup "App failed to launch"
-fi
-
-nohup frida -H localhost:"$NMAP_FRIDA_PORT" --runtime=v8 -p "$PID" \
+# Use Frida to SPAWN the app (-f) and immediately resume (--no-pause)
+# This completely eliminates the timing gap where the app could detect root/frida before hooks apply.
+nohup frida -H localhost:"$NMAP_FRIDA_PORT" --runtime=v8 -f "$PKG_NAME" \
     -l lib/hooks/network_hook.js \
     -l lib/hooks/_core_survival.js \
-    --no-auto-reload > "$FRIDA_LOG" 2>&1 &
+    --no-pause --no-auto-reload > "$FRIDA_LOG" 2>&1 &
 FRIDA_PID=$!
 
-sleep 3
+# Give the app a few seconds to fully initialize
+sleep 5
 
 # Trap is already configured at the top
 
