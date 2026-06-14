@@ -133,17 +133,17 @@ if [ "$NMAP_NO_IP" != "true" ]; then
     
     if [ "$CONNECTED" = false ]; then
         echo " [🚨] Network verification FAILED. Terminating session."
-        local REQ_PAYLOAD="{\"task_id\": $NMAP_TASK_ID, \"status\": \"FAIL_NETWORK_TIMEOUT\", \"device_id\": \"$DEV_ID\", \"drive_dist\": 0, \"drive_time\": 0}"
+        REQ_PAYLOAD="{\"task_id\": $NMAP_TASK_ID, \"status\": \"FAIL_NETWORK_TIMEOUT\", \"device_id\": \"$DEV_ID\", \"drive_dist\": 0, \"drive_time\": 0}"
         echo "[$(date +"%H:%M:%S.%3N")] [REQ] /api/v1/update_status | Payload: $REQ_PAYLOAD" >> "$EXEC_LOG"
-        local RES=$(curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/update_status" -H "Content-Type: application/json" -d "$REQ_PAYLOAD")
+        RES=$(curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/update_status" -H "Content-Type: application/json" -d "$REQ_PAYLOAD")
         echo "[$(date +"%H:%M:%S.%3N")] [RES] $RES" >> "$EXEC_LOG"
         exit 1
     fi
 
     # Update Status to Server with Real IP
-    local REQ_PAYLOAD="{\"task_id\": $NMAP_TASK_ID, \"status\": \"IP_CHANGED\", \"device_id\": \"$DEV_ID\", \"real_ip\": \"$REAL_IP\", \"drive_dist\": 0, \"drive_time\": 0}"
+    REQ_PAYLOAD="{\"task_id\": $NMAP_TASK_ID, \"status\": \"IP_CHANGED\", \"device_id\": \"$DEV_ID\", \"real_ip\": \"$REAL_IP\", \"drive_dist\": 0, \"drive_time\": 0}"
     echo "[$(date +"%H:%M:%S.%3N")] [REQ] /api/v1/update_status | Payload: $REQ_PAYLOAD" >> "$EXEC_LOG"
-    local RES=$(curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/update_status" -H "Content-Type: application/json" -d "$REQ_PAYLOAD")
+    RES=$(curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/update_status" -H "Content-Type: application/json" -d "$REQ_PAYLOAD")
     echo "[$(date +"%H:%M:%S.%3N")] [RES] $RES" >> "$EXEC_LOG"
     export NMAP_REAL_IP="$REAL_IP"
     sleep 2
@@ -269,20 +269,20 @@ FRIDA_LOG="$CAPTURE_LOG_DIR/frida.log"
 adb -s "$DEV_ID" forward tcp:"$NMAP_FRIDA_PORT" tcp:27042 >/dev/null 2>&1
 
 # [NEW] Clear App Cache to prevent OOM/Stale Cache Crashes
-local su_path=$(adb -s "$DEV_ID" shell "which su" 2>/dev/null | tr -d '\r')
-[ -z "$su_path" ] && su_path="su"
-adb -s "$DEV_ID" shell "$su_path -c 'rm -rf /data/user/0/$PKG_NAME/cache/*'" 2>/dev/null
+CACHE_SU_PATH=$(adb -s "$DEV_ID" shell "which su" 2>/dev/null | tr -d '\r')
+[ -z "$CACHE_SU_PATH" ] && CACHE_SU_PATH="su"
+adb -s "$DEV_ID" shell "$CACHE_SU_PATH -c 'rm -rf /data/user/0/$PKG_NAME/cache/*'" 2>/dev/null
 echo "[$DEV_ID] App cache cleared."
 
 # [V3 STYLE] Start at API-provided location
 ./gps/static.sh "$DEV_ID" "$NMAP_START_LAT" "$NMAP_START_LNG"
 
-# Use Frida to SPAWN the app (-f) and immediately resume (--no-pause)
+# Use Frida to SPAWN the app (-f)
 # This completely eliminates the timing gap where the app could detect root/frida before hooks apply.
 nohup frida -H localhost:"$NMAP_FRIDA_PORT" --runtime=v8 -f "$PKG_NAME" \
     -l lib/hooks/network_hook.js \
     -l lib/hooks/_core_survival.js \
-    --no-pause --no-auto-reload > "$FRIDA_LOG" 2>&1 &
+    --no-auto-reload > "$FRIDA_LOG" 2>&1 &
 FRIDA_PID=$!
 
 # Give the app a few seconds to fully initialize
