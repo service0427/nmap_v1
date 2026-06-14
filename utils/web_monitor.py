@@ -18,9 +18,9 @@ def get_connected_devices_count():
         output = subprocess.check_output(["adb", "devices"], timeout=3).decode("utf-8")
         lines = output.strip().split("\n")[1:]
         count = sum(1 for line in lines if line.strip() and "device" in line)
-        return max(10, count)
+        return count if count > 0 else 1
     except:
-        return 10
+        return 1
 
 MAX_SLOTS = get_connected_devices_count()
 LOG_BASE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "wifi_single", "logs")
