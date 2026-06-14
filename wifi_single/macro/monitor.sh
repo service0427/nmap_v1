@@ -231,6 +231,7 @@ while true; do
 
                     if [ "$IDENTITY_VALID" = true ]; then
                         echo "[$(NOW)] [✓] Identity Validation Passed. All target values matched."
+                        touch "$CAPTURE_LOG_DIR/.success"
                         
                         # [NEW] Calculate final average speed to report to server
                         FINAL_CALC_SPEED=0

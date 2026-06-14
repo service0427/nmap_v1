@@ -49,8 +49,9 @@ cleanup() {
     # [V3 STYLE] Report Final Result
     local FINAL_STATUS="FAIL"
     local SUMMARY_PATH="$CAPTURE_LOG_DIR/session_summary.json"
-    if [ -f "$SUMMARY_PATH" ]; then
-        if grep -q "ARRIVED" "$SUMMARY_PATH"; then FINAL_STATUS="SUCCESS"; fi
+    if [ -f "$CAPTURE_LOG_DIR/.success" ]; then
+        FINAL_STATUS="SUCCESS"
+        REASON="Task Completed Successfully"
     fi
     
     local REQ_PAYLOAD="{\"task_id\": $NMAP_TASK_ID, \"device_id\": \"$DEV_ID\", \"status\": \"$FINAL_STATUS\", \"message\": \"Terminated: $REASON\"}"
@@ -135,8 +136,17 @@ if [ "$NMAP_NO_IP" != "true" ]; then
     sleep 2
 fi
 
+# 1.55 Gather Environmental Metrics
+ENV_TEMP=$(adb -s "$DEV_ID" shell dumpsys battery | grep temperature | awk '{print $2}' | tr -d '\r\n' || echo "0")
+ENV_BATT=$(adb -s "$DEV_ID" shell dumpsys battery | grep level | awk '{print $2}' | tr -d '\r\n' || echo "0")
+ENV_WIFI=$(adb -s "$DEV_ID" shell cmd wifi status 2>/dev/null | grep RSSI | sed -E 's/.*RSSI: ([-0-9]+).*/\1/' | tr -d '\r\n' || echo "0")
+ENV_RAM=$(adb -s "$DEV_ID" shell cat /proc/meminfo 2>/dev/null | grep MemAvailable | awk '{print $2}' | tr -d '\r\n' || echo "0")
+ENV_TEMP_C=$(awk "BEGIN {print $ENV_TEMP / 10}")
+
+echo "[$DEV_ID] [📊] Environment Snapshot: Temp=${ENV_TEMP_C}°C | Batt=${ENV_BATT}% | Wi-Fi RSSI=${ENV_WIFI}dBm | Free RAM=${ENV_RAM}kB" >> "$EXEC_LOG"
+
 # 1.6 Initialize Session Summary
-echo "{\"task_id\": $NMAP_TASK_ID, \"device_id\": \"$DEV_ID\", \"real_ip\": \"$NMAP_REAL_IP\", \"task_start_time\": \"$(date +%Y-%m-%dT%H:%M:%S)\", \"status\": \"STARTED\"}" > "$CAPTURE_LOG_DIR/session_summary.json"
+echo "{\"task_id\": $NMAP_TASK_ID, \"device_id\": \"$DEV_ID\", \"real_ip\": \"$NMAP_REAL_IP\", \"task_start_time\": \"$(date +%Y-%m-%dT%H:%M:%S)\", \"status\": \"STARTED\", \"env\": {\"temp_c\": $ENV_TEMP_C, \"battery\": $ENV_BATT, \"wifi_rssi\": \"$ENV_WIFI\", \"free_ram_kb\": \"$ENV_RAM\"}}" > "$CAPTURE_LOG_DIR/session_summary.json"
 
 # [NEW] Create Live Task Badge for Web Monitor (즉시 할당 정보 반영)
 CURRENT_TASK_JSON="${MODE_WIFI_LOGS}/${DEV_ID}/current_task.json"
@@ -244,6 +254,12 @@ RELOAD_PID=$!
 echo "[$DEV_ID] Launching Optimized Session via Frida Attach..."
 FRIDA_LOG="$CAPTURE_LOG_DIR/frida.log"
 adb -s "$DEV_ID" forward tcp:"$NMAP_FRIDA_PORT" tcp:27042 >/dev/null 2>&1
+
+# [NEW] Clear App Cache to prevent OOM/Stale Cache Crashes
+local su_path=$(adb -s "$DEV_ID" shell "which su" 2>/dev/null | tr -d '\r')
+[ -z "$su_path" ] && su_path="su"
+adb -s "$DEV_ID" shell "$su_path -c 'rm -rf /data/user/0/$PKG_NAME/cache/*'" 2>/dev/null
+echo "[$DEV_ID] App cache cleared."
 
 # [V3 STYLE] Start at API-provided location
 ./gps/static.sh "$DEV_ID" "$NMAP_START_LAT" "$NMAP_START_LNG"
