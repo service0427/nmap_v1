@@ -181,7 +181,7 @@ while true; do
                         echo "[$(date +\"%H:%M:%S.%3N\")] [REQ] /api/v1/update_status | Payload: $REQ_PAYLOAD" >> "$CAPTURE_LOG_DIR/api_trace.log"
                         RES=$(curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/update_status" -H "Content-Type: application/json" -d "$REQ_PAYLOAD")
                         echo "[$(date +\"%H:%M:%S.%3N\")] [RES] $RES" >> "$CAPTURE_LOG_DIR/api_trace.log"
-                        break # 강제종료 없이 루프를 깨고 재시도
+                        adb -s "$DEV_ID" shell am force-stop "$PKG_NAME"; exit 1 # [V1.0.1] 방지: 무한 루프 15분 대기 차단 및 즉시 종료
                     fi
                 elif [ "$ACTION" == "CLICK_ARRIVAL" ]; then
                     echo "[$(NOW)] [Action] Clicking '도착' (Arrival)..."
@@ -195,7 +195,7 @@ while true; do
                         echo "[$(date +\"%H:%M:%S.%3N\")] [REQ] /api/v1/update_status | Payload: $REQ_PAYLOAD" >> "$CAPTURE_LOG_DIR/api_trace.log"
                         RES=$(curl -s -X POST "http://${API_SERVER:-localhost:8000}/api/v1/update_status" -H "Content-Type: application/json" -d "$REQ_PAYLOAD")
                         echo "[$(date +\"%H:%M:%S.%3N\")] [RES] $RES" >> "$CAPTURE_LOG_DIR/api_trace.log"
-                        break # 강제종료 없이 루프를 깨고 재시도
+                        adb -s "$DEV_ID" shell am force-stop "$PKG_NAME"; exit 1 # [V1.0.1] 방지: 무한 루프 15분 대기 차단 및 즉시 종료
                     fi
                 elif [ "$ACTION" == "EXIT_SUCCESS" ]; then
                     echo "[$(NOW)] [Action] GOAL REACHED. EXTRACTING ACTUAL STATS AND VALIDATING IDENTITY..."
